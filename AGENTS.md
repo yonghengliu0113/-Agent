@@ -34,7 +34,8 @@ enterprise-customer-agent/
 ├── load-tests/                  # k6 压测脚本
 ├── docs/                        # ARCHITECTURE / API / RUNBOOK / ADR / _baseline / observability
 ├── images/  .logs/  .tools/     # 素材、运行日志、本地 JDK/Maven/Redis
-├── start-local.sh               # macOS 无 Docker 一键启动
+├── start-local.sh               # macOS 一键启动（随终端退出而停止）
+├── start-local.py               # macOS 独立会话启动（脱离父 shell 常驻）
 └── start-all.bat / .ps1         # Windows 一键启动（需 Docker Desktop）
 ```
 
@@ -70,7 +71,8 @@ enterprise-customer-agent/
 macOS（推荐，按 Redis → Java → Agent API → Worker → Vue 顺序并自带健康等待）：
 
 ```bash
-./start-local.sh          # 日志在 .logs/
+./start-local.sh          # 日志在 .logs/；随终端退出而停止
+python3 start-local.py    # 需要脱离终端常驻时用这个（setsid）
 ```
 
 手动等价步骤：

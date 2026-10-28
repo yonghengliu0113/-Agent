@@ -35,7 +35,9 @@ macOS 无 Docker 一键启动（推荐，按上述顺序并自带等待）：
 
 ```bash
 cd /Users/yongheng/Desktop/货运智能体/enterprise-customer-agent
-./start-local.sh
+./start-local.sh        # 前台脚本，随终端退出而停止
+# 或：需要脱离终端常驻时
+python3 start-local.py
 ```
 
 脚本使用仓库内 `.tools/` 的 JDK 17、Maven 3.9.16、Redis 7.2.9，不依赖系统环境。Windows 下用 `start-all.bat`（转调 `start-all.ps1`，需要 Docker Desktop）。

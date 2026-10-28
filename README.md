@@ -45,6 +45,17 @@ cd /Users/yongheng/Desktop/货运智能体/enterprise-customer-agent
 
 脚本按固定顺序拉起 Redis → Java(8081) → Agent API(8000) → Agent Worker → Vue(5173)，每一步都做健康等待。日志在 `.logs/`。
 
+**需要服务在当前终端关掉后继续常驻时，改用 `start-local.py`：**
+
+```bash
+python3 start-local.py
+```
+
+两者的区别是实质性的：`start-local.sh` 用 `nohup ... &`，只忽略 SIGHUP，进程仍在调用方的
+进程组里——终端被关闭或被清理时，整个进程组会一起收到终止信号，服务随之消失。
+`start-local.py` 用 `start_new_session=True`（等价 setsid）把每个服务放进独立会话，
+真正做到脱离父 shell 常驻。CI/远程会话/自动化脚本里启动时，请用 `start-local.py`。
+
 Windows 用 `start-all.bat`（需要 Docker Desktop）。
 
 ### 手动（等价，五个终端）
