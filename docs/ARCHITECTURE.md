@@ -56,8 +56,8 @@
 ai-agent-service/
 ├── app/
 │   ├── __init__.py        # 8 行，仅导出 FastAPI 实例（from app.main import app）
-│   ├── main.py            # 97 行，仅装配：中间件、生命周期、路由挂载，无业务逻辑
-│   ├── deps.py            # 54 行，进程级单例集中构建
+│   ├── main.py            # 90 行，仅装配：中间件、生命周期、路由挂载，无业务逻辑
+│   ├── deps.py            # 55 行，进程级单例集中构建
 │   ├── core/config.py     # 13 行，环境变量唯一出口
 │   └── api/
 │       ├── helpers.py     # 468 行，31 个跨路由共享辅助函数

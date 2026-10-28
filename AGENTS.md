@@ -12,8 +12,8 @@ enterprise-customer-agent/
 ├── ai-agent-service/            # FastAPI Agent 服务
 │   ├── app/                     # 装配层（历史上的单文件 app.py 已拆分）
 │   │   ├── __init__.py          # 8 行，只导出 FastAPI 实例，uvicorn app:app 仍可用
-│   │   ├── main.py              # 97 行，仅装配：中间件、生命周期、路由挂载
-│   │   ├── deps.py              # 54 行，进程级单例集中构建
+│   │   ├── main.py              # 90 行，仅装配：中间件、生命周期、路由挂载
+│   │   ├── deps.py              # 55 行，进程级单例集中构建
 │   │   ├── core/config.py       # 13 行，app 层新增配置的入口（存量 os.getenv 尚未收口）
 │   │   └── api/
 │   │       ├── helpers.py       # 31 个跨路由共享辅助函数
