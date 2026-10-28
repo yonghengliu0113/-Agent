@@ -1,0 +1,310 @@
+/* ============================================================================
+ * 登录页样式（与 ServiceLoginShell.vue 配套）
+ *
+ * 设计约束：
+ * 1. 单一强调色 var(--ws-accent)，与工作台共用同一套设计令牌；
+ * 2. 圆角刻度：卡片 16px / 控件 10px / 胶囊 999px；
+ * 3. 零动效区：仅一次性淡入与 hover/焦点反馈；
+ * 4. 背景为程序化图形（分层径向渐变 + 点阵 + 航线曲线），无位图依赖。
+ *
+ * 类名统一使用 login- 前缀，放在全局样式表不会与其它页面冲突。
+ * ==========================================================================*/
+
+.login-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(1220px 780px at 16% 2%, rgb(64 130 255 / 34%), transparent 60%),
+    radial-gradient(920px 640px at 88% 98%, rgb(20 184 166 / 24%), transparent 62%),
+    radial-gradient(700px 700px at 50% 46%, rgb(37 99 235 / 18%), transparent 70%),
+    #060b14;
+}
+
+/* 点阵只在中上部淡入，形成纵深，不干扰表单阅读 */
+.login-stage::before {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background-image: radial-gradient(rgb(255 255 255 / 18%) 1px, transparent 1px);
+  background-size: 26px 26px;
+  opacity: 0.5;
+  -webkit-mask-image: radial-gradient(ellipse 78% 62% at 50% 36%, #000 22%, transparent 76%);
+  mask-image: radial-gradient(ellipse 78% 62% at 50% 36%, #000 22%, transparent 76%);
+  pointer-events: none;
+}
+
+/* 中心提亮 + 边缘压暗：让卡片所在区域成为视觉焦点，避免四角发灰 */
+.login-stage::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background:
+    radial-gradient(680px 500px at 50% 48%, rgb(130 175 255 / 16%), transparent 68%),
+    radial-gradient(140% 120% at 50% 50%, transparent 52%, rgb(1 5 12 / 62%) 100%);
+  pointer-events: none;
+}
+
+.login-stage__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.login-card {
+  position: relative;
+  z-index: 2;
+  width: min(392px, 100%);
+  padding: 28px 28px 22px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow:
+    0 28px 64px rgb(3 10 25 / 45%),
+    0 2px 6px rgb(3 10 25 / 24%);
+  animation: login-in 0.32s ease-out both;
+}
+
+@keyframes login-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.login-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.login-mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--ws-accent, #2563eb);
+  color: #fff;
+  font-size: 16px;
+}
+
+.login-brand {
+  color: #34405a;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.login-title {
+  margin: 18px 0 0;
+  color: #0f1524;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.login-demo {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.login-demo button {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #dde3ec;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #55607a;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+
+.login-demo button:hover,
+.login-demo button:focus-visible {
+  border-color: var(--ws-accent, #2563eb);
+  background: #eef4ff;
+  color: var(--ws-accent, #2563eb);
+  outline: none;
+}
+
+.login-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.login-field {
+  display: grid;
+  gap: 6px;
+}
+
+.login-field > span {
+  color: #4a5364;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.login-form .el-input__wrapper {
+  min-height: 46px;
+  padding: 0 13px;
+  border: 1px solid #dde3ec;
+  border-radius: 10px;
+  background: #fbfcfe;
+  box-shadow: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.login-form .el-input__wrapper:hover {
+  border-color: #c6cfdd;
+}
+
+.login-form .el-input__wrapper.is-focus {
+  border-color: var(--ws-accent, #2563eb);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 14%);
+}
+
+.login-form .el-input__inner {
+  color: #0f1524;
+  font-size: 15px;
+}
+
+.login-form .el-input__inner::placeholder {
+  color: #98a2b3;
+}
+
+.login-eye {
+  color: #8b94a5;
+  cursor: pointer;
+  outline: none;
+}
+
+.login-eye:hover,
+.login-eye:focus-visible {
+  color: var(--ws-accent, #2563eb);
+}
+
+.login-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: -2px;
+}
+
+.login-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #5b6478;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.login-link:hover,
+.login-link:focus-visible {
+  color: var(--ws-accent, #2563eb);
+  outline: none;
+}
+
+.login-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 46px;
+  margin-top: 4px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--ws-accent, #2563eb);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.08s ease;
+}
+
+.login-submit:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.login-submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.login-submit:disabled {
+  opacity: 0.72;
+  cursor: progress;
+}
+
+.login-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.login-divider {
+  width: 1px;
+  height: 11px;
+  background: #e2e6ee;
+}
+
+.login-consent {
+  margin: 14px 0 0;
+  color: #98a2b3;
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.login-consent button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #5b6478;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.login-consent button:hover {
+  color: var(--ws-accent, #2563eb);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-card {
+    animation: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .login-card {
+    padding: 22px 18px 18px;
+  }
+
+  .login-title {
+    font-size: 22px;
+  }
+}

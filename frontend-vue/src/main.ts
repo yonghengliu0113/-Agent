@@ -1,6 +1,7 @@
 import 'element-plus/dist/index.css'
 import './styles/main.css'
 import './styles/workspace.css'
+import './styles/login.css'
 
 import ElementPlus from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'

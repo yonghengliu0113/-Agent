@@ -1371,3 +1371,25 @@
   gap: 6px;
   padding: 8px 0;
 }
+
+/* ---------------------------------------------------------------- 客户聊天：AI 回复块
+ * 原先 AI 回复是完全裸文本，和客户气泡、系统提示在视觉上无法区分。
+ * 这里给一个极轻的表面色与左侧强调边，既保持长答案的可读性（不加气泡内边距挤压），
+ * 又让"这是谁说的话"一眼可辨。
+ */
+.ai-flat-body {
+  padding: 10px 14px 12px;
+  border: 1px solid #e6ebf3;
+  border-left: 2px solid var(--ws-accent);
+  border-radius: 10px;
+  background: #fbfcfe;
+}
+
+.chat-message.ai-flat + .chat-message.ai-flat .ai-flat-body {
+  margin-top: 2px;
+}
+
+/* AI 消息内的操作行（复制/刷新/参考文献）与正文留出呼吸 */
+.ai-flat-body .message-actions {
+  margin-top: 8px;
+}
