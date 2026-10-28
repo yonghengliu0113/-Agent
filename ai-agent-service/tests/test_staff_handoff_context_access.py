@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 import app
 from app import deps
 from app.api import helpers
-from repositories.chat_repository import ChatMessageRepository, ChatSessionRepository
+from repositories.chat_message_repository import ChatMessageRepository
+from repositories.chat_repository import ChatSessionRepository
 from repositories.staff_handoff_audit_repository import StaffHandoffAuditRepository
 
 

@@ -4,7 +4,8 @@
 否则测试中的 monkeypatch 无法生效。
 """
 from agents.customer_service_agent import CustomerServiceAgent
-from repositories.chat_repository import ChatMessageRepository, ChatSessionRepository
+from repositories.chat_message_repository import ChatMessageRepository
+from repositories.chat_repository import ChatSessionRepository
 from repositories.evaluation_repository import EvaluationRepository
 from repositories.staff_handoff_audit_repository import StaffHandoffAuditRepository
 from services.agent_execution_queue import AgentExecutionQueue

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from repositories.chat_repository import ChatMessageRepository, ChatSessionRepository
+from repositories.chat_message_repository import ChatMessageRepository
+from repositories.chat_repository import ChatSessionRepository
 from services.staff_presence_service import StaffPresenceService
 
 

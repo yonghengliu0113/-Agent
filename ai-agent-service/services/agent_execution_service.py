@@ -6,7 +6,8 @@ from typing import Any, Callable
 
 from agents.conversation_context import build_conversation_context
 from agents.customer_service_agent import CustomerServiceAgent
-from repositories.chat_repository import ChatMessageRepository, ChatSessionRepository
+from repositories.chat_message_repository import ChatMessageRepository
+from repositories.chat_repository import ChatSessionRepository
 from repositories.conversation_state_repository import ConversationStateRepository, FollowupNotificationRepository
 from repositories.evaluation_repository import EvaluationRepository
 from schemas.intent_schema import AgentReplyRequest

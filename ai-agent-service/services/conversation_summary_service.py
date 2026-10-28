@@ -12,7 +12,8 @@ from typing import Any, Callable
 
 from langchain_core.prompts import ChatPromptTemplate
 
-from repositories.chat_repository import ChatMessageRepository, ChatSessionRepository
+from repositories.chat_message_repository import ChatMessageRepository
+from repositories.chat_repository import ChatSessionRepository
 from repositories.conversation_state_repository import ConversationStateRepository
 from services.conversation_state_service import RECENT_TURN_MESSAGE_LIMIT, ConversationStateService
 from services.llm_model_factory import ChatModelConfig, build_chat_model

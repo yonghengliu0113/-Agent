@@ -8,7 +8,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from repositories.chat_repository import ChatMessageRepository, ChatSessionRepository
+from repositories.chat_message_repository import ChatMessageRepository
+from repositories.chat_repository import ChatSessionRepository
 from repositories.conversation_state_repository import ConversationStateRepository, FollowupNotificationRepository
 from services.conversation_state_service import ConversationStateService
 from services.downstream_identity import build_execution_identity, issue_execution_credential
