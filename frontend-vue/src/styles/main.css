@@ -1057,6 +1057,7 @@ textarea {
 .chat-context-strip {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
   padding: 5px 10px;
   border: 1px solid #dce9fb;
@@ -1070,6 +1071,20 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+/* 上下文条内的订单切换入口：左侧保留当前订单/工单提示，右侧提供可选订单下拉。 */
+.context-chips {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.context-order-select {
+  flex: 0 0 220px;
+  margin-left: auto;
 }
 
 .chat-channel-tabs {

@@ -21,6 +21,8 @@ const props = defineProps<{
   submitting?: boolean
   selectedOrder: CustomerOrder | null
   selectedTicket: Ticket | null
+  /** 当前客户可选的订单列表，用于在对话内切换咨询订单。 */
+  orders?: CustomerOrder[]
   /** 当前输入框的受控业务语境，仅用于引导客户补充信息。 */
   composerHint?: string
 }>()
@@ -35,6 +37,8 @@ const emit = defineEmits<{
   regenerate: [message: string]
   upload: [file: File]
   'download-attachment': [message: ChatMessage]
+  /** 选择或清空当前咨询订单；空字符串表示取消选择。 */
+  'select-order': [orderNo: string]
 }>()
 
 const handoffStatusText = computed(() => ({ PENDING: '待接入', ACTIVE: '已接入', CLOSED: '已结束' }[String(props.session?.handoff_status)] || ''))
@@ -44,6 +48,19 @@ const handoffStatusType = computed<'success' | 'info' | 'warning'>(() =>
 
 /** 客户可见的会话工单号：优先取会话预建工单，其次取前端选中的工单。 */
 const sessionTicketNo = computed(() => props.session?.ticket_no || props.selectedTicket?.ticketNo || '')
+
+/** 订单下拉项只展示订单号与商品名，避免把金额等敏感字段塞进下拉面板。 */
+const orderOptions = computed(() =>
+  (props.orders ?? []).map((order) => ({
+    value: order.orderNo,
+    label: order.productName ? `${order.orderNo}｜${order.productName}` : order.orderNo
+  }))
+)
+
+/** 切换咨询订单；清空选择时用空字符串通知父组件取消订单上下文。 */
+function handleOrderChange(orderNo: string | null | undefined) {
+  emit('select-order', orderNo || '')
+}
 
 function handleUpdateModelValue(value: string) {
   emit('update:modelValue', value)
@@ -75,15 +92,29 @@ function handleDownloadAttachment(message: ChatMessage) {
     </div>
 
     <div class="chat-context-strip">
-      <span v-if="selectedOrder">
-        <el-icon><Message /></el-icon>
-        当前订单：{{ selectedOrder.orderNo }}
-      </span>
-      <span v-if="sessionTicketNo">
-        <el-icon><Tickets /></el-icon>
-        当前工单：{{ sessionTicketNo }}
-      </span>
-      <span v-if="!selectedOrder && !sessionTicketNo">当前为无订单咨询，可直接提问规则、发票、会员或人工服务问题</span>
+      <div class="context-chips">
+        <span v-if="selectedOrder">
+          <el-icon><Message /></el-icon>
+          当前订单：{{ selectedOrder.orderNo }}
+        </span>
+        <span v-if="sessionTicketNo">
+          <el-icon><Tickets /></el-icon>
+          当前工单：{{ sessionTicketNo }}
+        </span>
+        <span v-if="!selectedOrder && !sessionTicketNo">当前为无订单咨询，可直接提问规则、发票、会员或人工服务问题</span>
+      </div>
+      <el-select
+        v-if="orderOptions.length"
+        class="context-order-select"
+        :model-value="selectedOrder?.orderNo || ''"
+        placeholder="选择咨询订单（可选）"
+        size="small"
+        clearable
+        filterable
+        @change="handleOrderChange"
+      >
+        <el-option v-for="option in orderOptions" :key="option.value" :label="option.label" :value="option.value" />
+      </el-select>
     </div>
 
     <ChatHandoffStatusCard

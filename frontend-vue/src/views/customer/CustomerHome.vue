@@ -50,6 +50,7 @@ const routeContext = useCustomerRouteContext({
 
 const {
   agentStatus,
+  orders,
   selectedOrder,
   selectedTicket,
   selectedOrderNo,
@@ -100,8 +101,8 @@ async function selectHistorySession(session: ChatSession) {
 }
 
 /** 选中/取消选中订单；切换上下文时同步清理售后草稿语境。 */
-function selectOrder(orderNo: string) {
-  if (selectedOrderNo.value === orderNo) {
+function selectOrder(orderNo: string | null) {
+  if (!orderNo || selectedOrderNo.value === orderNo) {
     selectedOrderNo.value = null
     selectedTicketNo.value = null
     composerMode.value = 'default'
@@ -220,11 +221,13 @@ watch(() => route.fullPath, () => {
             :session="selectedSession"
             :selected-order="selectedOrder"
             :selected-ticket="selectedTicket"
+            :orders="orders"
             :composer-hint="composerHint"
             :submitting="submitting || loadingMessages"
             @cancel-handoff="cancelHandoff"
             @quick="fillAndMaybeSend"
             @regenerate="regenerateAnswer"
+            @select-order="selectOrder"
             @submit="submitQuestion"
             @cancel="cancelCurrentGeneration"
             @upload="handleUploadAttachment"
