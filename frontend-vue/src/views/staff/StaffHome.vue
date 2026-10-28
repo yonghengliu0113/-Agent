@@ -1,445 +1,116 @@
 <script setup lang="ts">
-import { Check, Close, Refresh, SwitchButton, UserFilled } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { staffHandoffApi, staffReplyApi, staffTicketApi } from '@/api/staff'
+import { staffHandoffApi } from '@/api/staff'
+import StaffHandoffWorkspace from '@/components/staff/StaffHandoffWorkspace.vue'
+import StaffQueueAside from '@/components/staff/StaffQueueAside.vue'
+import StaffTicketWorkspace from '@/components/staff/StaffTicketWorkspace.vue'
+import { useStaffChangeRequests } from '@/composables/useStaffChangeRequests'
+import { useStaffHandoff } from '@/composables/useStaffHandoff'
+import { useStaffPolling } from '@/composables/useStaffPolling'
+import { useStaffTicketActions } from '@/composables/useStaffTicketActions'
+import { useStaffTicketQueue } from '@/composables/useStaffTicketQueue'
 import { useAuthStore } from '@/stores/auth'
-import type { ChatMessage, StaffHandoffDetail, StaffHandoffSession, StaffTicketContext, Ticket, TicketChangeRequest } from '@/types/api'
-import { statusType } from '@/utils/ticket'
-
-const router = useRouter()
-const auth = useAuthStore()
-const tickets = ref<Ticket[]>([])
-const handoffSessions = ref<StaffHandoffSession[]>([])
-const handoffMessages = ref<ChatMessage[]>([])
-// 座席默认只读取交接摘要与最近相关窗口，更早历史必须由座席主动展开。
-const handoffSummary = ref<StaffHandoffDetail['handoff_summary'] | null>(null)
-const handoffHistoryAvailable = ref(false)
-const handoffHistoryAccessAllowed = ref(false)
-const handoffHistoryLoading = ref(false)
-const selectedTicketNo = ref<string | null>(null)
-// 履约改约仍归属于原工单；座席只能在自己领取的原工单内审核。
-const ticketChangeRequests = ref<TicketChangeRequest[]>([])
-const loadingChangeRequests = ref(false)
-const decidingChangeRequestNo = ref<string | null>(null)
-const changeRequestMessages = ref<Record<string, string>>({})
-const selectedHandoffSessionId = ref<string | null>(null)
-const loading = ref(false)
-const handoffLoading = ref(false)
-const acting = ref(false)
-const generatingDraft = ref(false)
-const closeReason = ref('问题已处理完成')
-const draftMessage = ref('')
-// 明确区分真实模型草稿与安全回退，避免座席把固定模板误认为 AI 已完成润色。
-const draftGenerationMode = ref<'llm' | 'fallback' | null>(null)
-const draftFallbackReason = ref<string | null>(null)
-const handoffReply = ref('')
-const handoffCloseMessage = ref('人工服务已结束，后续可继续由智能助手协助。')
-const workMode = ref<'tickets' | 'handoff'>('tickets')
-const handoffScope = ref<'pending' | 'mine'>('pending')
-const latestHandoffMessageId = ref(0)
-// 已读游标按坐席持久化到 localStorage，刷新页面后未读红点不丢失。
-const seenStoreKey = computed(() => `eca_staff_seen_${auth.user?.user_id ?? 'anonymous'}`)
-function loadSeenHandoffIds(): Record<string, number> {
-  try {
-    return JSON.parse(localStorage.getItem(seenStoreKey.value) || '{}') as Record<string, number>
-  } catch {
-    return {}
-  }
-}
-const seenHandoffMessageIds = ref<Record<string, number>>(loadSeenHandoffIds())
-function markHandoffSeen(sessionId: string, messageId: number) {
-  if (messageId > (seenHandoffMessageIds.value[sessionId] || 0)) {
-    seenHandoffMessageIds.value[sessionId] = messageId
-    try {
-      localStorage.setItem(seenStoreKey.value, JSON.stringify(seenHandoffMessageIds.value))
-    } catch {
-      /* 存储不可用时仅保留内存中的已读状态。 */
-    }
-  }
-}
-let queuePollTimer: number | null = null
-let detailPollTimer: number | null = null
-let heartbeatTimer: number | null = null
-let handoffPolling = false
-let queuePollFailures = 0
-let detailPollFailures = 0
-let handoffDetailRequestVersion = 0
-const queueScope = ref<'mine' | 'claimable'>('mine')
-const selectedStatuses = ref(['PENDING_ASSIGN', 'PENDING_PROCESS', 'PROCESSING', 'REOPENED'])
-
-const statusOptions = ['PENDING_ASSIGN', 'PENDING_PROCESS', 'PROCESSING', 'REOPENED', 'CLOSED']
-const selectedTicket = computed(() => tickets.value.find((item) => item.ticketNo === selectedTicketNo.value) ?? null)
-const selectedHandoff = computed(() => handoffSessions.value.find((item) => item.session_id === selectedHandoffSessionId.value) ?? null)
-const visibleHandoffs = computed(() => {
-  const items = handoffSessions.value.filter((item) => handoffScope.value === 'pending' ? item.handoff_status === 'PENDING' : item.handoff_status === 'ACTIVE')
-  // 待接入按排队先后(FIFO)；我的会话按最近活跃排序，最新消息在最上面。
-  return [...items].sort((a, b) => handoffScope.value === 'pending'
-    ? String(a.human_requested_at || '').localeCompare(String(b.human_requested_at || ''))
-    : String(b.latest_message_at || '').localeCompare(String(a.latest_message_at || '')))
-})
-const visibleTickets = computed(() => {
-  if (queueScope.value === 'claimable') {
-    return tickets.value.filter((ticket) => !ticket.handlerId || ticket.status === 'PENDING_ASSIGN')
-  }
-  return tickets.value.filter((ticket) => ticket.handlerId === auth.user?.user_id)
-})
-const canClaim = computed(() => {
-  return Boolean(selectedTicket.value && !selectedTicket.value.handlerId && selectedTicket.value.status === 'PENDING_ASSIGN')
-})
-const canOperate = computed(() => selectedTicket.value?.handlerId === auth.user?.user_id)
-const canOperateHandoff = computed(() => {
-  return selectedHandoff.value?.handoff_status === 'ACTIVE' && selectedHandoff.value.human_assigned_staff_id === String(auth.user?.user_id)
-})
-
-async function loadTickets() {
-  loading.value = true
-  try {
-    const { data } = await staffTicketApi.list(selectedStatuses.value.join(','))
-    tickets.value = data
-    if (!selectedTicketNo.value || !data.some((item) => item.ticketNo === selectedTicketNo.value)) {
-      selectedTicketNo.value = visibleTickets.value[0]?.ticketNo ?? null
-    }
-  } finally {
-    loading.value = false
-  }
-}
-
-/** 读取已领取工单的改约子申请；无权限或网络异常不影响工单主界面。 */
-async function loadChangeRequests(ticketNo = selectedTicketNo.value) {
-  if (!ticketNo || !canOperate.value) {
-    ticketChangeRequests.value = []
-    return
-  }
-  loadingChangeRequests.value = true
-  try {
-    const { data } = await staffTicketApi.changeRequests(ticketNo)
-    if (selectedTicketNo.value === ticketNo) ticketChangeRequests.value = data
-  } catch {
-    if (selectedTicketNo.value === ticketNo) ticketChangeRequests.value = []
-  } finally {
-    loadingChangeRequests.value = false
-  }
-}
-
-function changeRequestStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    PENDING_REVIEW: '待审核',
-    WAITING_CUSTOMER: '待客户补充',
-    APPROVED: '已同意',
-    REJECTED: '已拒绝'
-  }
-  return labels[status] || status
-}
-
-/** 座席以客户可见说明审核改约；页面不提供直接覆写原工单字段的入口。 */
-async function decideChangeRequest(request: TicketChangeRequest, decision: 'APPROVE' | 'REJECT' | 'NEED_MORE_INFO') {
-  const ticket = selectedTicket.value
-  if (!ticket || !canOperate.value || decidingChangeRequestNo.value) return
-  decidingChangeRequestNo.value = request.requestNo
-  try {
-    const { data } = await staffTicketApi.decideChangeRequest(
-      ticket.ticketNo,
-      request.requestNo,
-      decision,
-      changeRequestMessages.value[request.requestNo] || ''
-    )
-    ElMessage.success(`履约变更申请已处理：${changeRequestStatusLabel(data.status)}`)
-    await loadTickets()
-    await loadChangeRequests(ticket.ticketNo)
-  } finally {
-    decidingChangeRequestNo.value = null
-  }
-}
-
-async function loadHandoffSessions(keepSelection = true) {
-  handoffLoading.value = true
-  try {
-    const previousSelection = selectedHandoffSessionId.value
-    const { data } = await staffHandoffApi.list()
-    handoffSessions.value = data
-    if (!keepSelection || !selectedHandoffSessionId.value || !data.some((item) => item.session_id === selectedHandoffSessionId.value)) {
-      selectedHandoffSessionId.value = data[0]?.session_id ?? null
-    }
-    if (selectedHandoffSessionId.value && (previousSelection !== selectedHandoffSessionId.value || !handoffMessages.value.length)) {
-      await loadHandoffDetail(selectedHandoffSessionId.value)
-    } else if (!selectedHandoffSessionId.value) {
-      // 只有当前会话被移出队列或不再可见时才清理历史，刷新同一会话不能覆盖本地消息。
-      handoffMessages.value = []
-      handoffSummary.value = null
-      handoffHistoryAvailable.value = false
-      handoffHistoryAccessAllowed.value = false
-      latestHandoffMessageId.value = 0
-    }
-  } finally {
-    handoffLoading.value = false
-  }
-}
-
-watch(handoffScope, () => {
-  const first = visibleHandoffs.value[0]
-  if (first && !visibleHandoffs.value.some((item) => item.session_id === selectedHandoffSessionId.value)) {
-    void selectHandoff(first)
-  }
-})
-
-async function loadHandoffDetail(sessionId: string) {
-  const requestVersion = ++handoffDetailRequestVersion
-  const { data } = await staffHandoffApi.detail(sessionId)
-  // 用户在网络请求期间切换了会话时，旧响应不能覆盖新会话的消息历史。
-  if (selectedHandoffSessionId.value !== sessionId || requestVersion !== handoffDetailRequestVersion) return
-  handoffMessages.value = data.messages
-  handoffSummary.value = data.handoff_summary ?? null
-  handoffHistoryAvailable.value = Boolean(data.history_available)
-  handoffHistoryAccessAllowed.value = Boolean(data.history_access_allowed)
-  latestHandoffMessageId.value = data.latest_message_id || Math.max(0, ...data.messages.map((item) => item.id))
-  markHandoffSeen(sessionId, latestHandoffMessageId.value)
-}
+import type { Ticket } from '@/types/api'
 
 /**
- * 座席按需加载更早历史。该操作由后端再次校验会话归属并写入审计日志，
- * 避免默认暴露整段 AI 对话。
+ * 坐席工作台容器。
+ * 负责组合左侧队列、工单工作区与人工接管工作区，并串联队列/工单/会话三类数据源。
+ * 列表、写操作、轮询与本地已读游标分别下沉到 composable，展示区块下沉到
+ * src/components/staff，本文件只保留页面级状态与生命周期。
  */
-async function loadEarlierHandoffHistory() {
-  const session = selectedHandoff.value
-  const earliestMessageId = Math.min(...handoffMessages.value.map((item) => item.id))
-  if (!session || !canOperateHandoff.value || !Number.isFinite(earliestMessageId) || handoffHistoryLoading.value) return
+const router = useRouter()
+const auth = useAuthStore()
+const workMode = ref<'tickets' | 'handoff'>('tickets')
+const acting = ref(false)
 
-  handoffHistoryLoading.value = true
-  try {
-    const { data } = await staffHandoffApi.history(session.session_id, earliestMessageId)
-    // 防止切换会话后旧请求把历史拼接到新会话。
-    if (selectedHandoffSessionId.value !== session.session_id) return
-    const known = new Set(handoffMessages.value.map((item) => item.id))
-    handoffMessages.value = [...data.messages.filter((item) => !known.has(item.id)), ...handoffMessages.value]
-    handoffHistoryAvailable.value = data.history_available
-    ElMessage.success('已加载更早历史，本次查看已记录审计日志')
-  } finally {
-    handoffHistoryLoading.value = false
-  }
-}
+const queue = useStaffTicketQueue()
+const changeRequests = useStaffChangeRequests({
+  selectedTicketNo: queue.selectedTicketNo,
+  selectedTicket: queue.selectedTicket,
+  canOperate: queue.canOperate,
+  loadTickets: queue.loadTickets
+})
+const ticketActions = useStaffTicketActions({
+  selectedTicket: queue.selectedTicket,
+  selectedTicketNo: queue.selectedTicketNo,
+  queueScope: queue.queueScope,
+  acting,
+  loadTickets: queue.loadTickets,
+  loadChangeRequests: changeRequests.loadChangeRequests
+})
+const handoff = useStaffHandoff({ acting })
+const polling = useStaffPolling({
+  loadHandoffSessions: handoff.loadHandoffSessions,
+  pollHandoffDetail: handoff.pollHandoffDetail
+})
 
-async function pollHandoffDetail() {
-  const sessionId = selectedHandoffSessionId.value
-  if (!sessionId || document.hidden) return
-  try {
-    const { data } = await staffHandoffApi.detail(sessionId, latestHandoffMessageId.value)
-    if (selectedHandoffSessionId.value !== sessionId) return
-    const known = new Set(handoffMessages.value.map((item) => item.id))
-    handoffMessages.value = [...handoffMessages.value, ...data.messages.filter((item) => !known.has(item.id))]
-    latestHandoffMessageId.value = Math.max(latestHandoffMessageId.value, data.latest_message_id || 0)
-    markHandoffSeen(sessionId, latestHandoffMessageId.value)
-    detailPollFailures = 0
-  } catch {
-    detailPollFailures += 1
-  }
-}
+const { selectedTicketNo, queueScope, selectedStatuses, statusOptions, loading, selectedTicket, visibleTickets, canClaim, canOperate, loadTickets } = queue
+const {
+  ticketChangeRequests,
+  loadingChangeRequests,
+  decidingChangeRequestNo,
+  changeRequestMessages,
+  loadChangeRequests,
+  decideChangeRequest
+} = changeRequests
+const {
+  closeReason,
+  draftMessage,
+  draftGenerationMode,
+  draftFallbackReason,
+  generatingDraft,
+  ticketAiContext,
+  loadingTicketAiContext,
+  resetDraft,
+  loadTicketAiContext,
+  claimTicket,
+  startTicket,
+  closeTicket,
+  generateDraft,
+  sendReply
+} = ticketActions
+const {
+  handoffSessions,
+  handoffMessages,
+  handoffSummary,
+  handoffHistoryAvailable,
+  handoffHistoryAccessAllowed,
+  handoffHistoryLoading,
+  selectedHandoffSessionId,
+  handoffLoading,
+  handoffReply,
+  handoffCloseMessage,
+  handoffScope,
+  seenHandoffMessageIds,
+  selectedHandoff,
+  visibleHandoffs,
+  canOperateHandoff,
+  loadHandoffSessions,
+  loadEarlierHandoffHistory,
+  selectHandoff,
+  acceptHandoff,
+  sendHandoffReply,
+  closeHandoff,
+  createHandoffTicket
+} = handoff
+const { startStaffPolling, stopStaffPolling, handleStaffVisibility } = polling
 
-function scheduleQueuePoll(delay = 3000) {
-  if (queuePollTimer !== null) window.clearTimeout(queuePollTimer)
-  queuePollTimer = window.setTimeout(async () => {
-    if (!document.hidden && !handoffPolling) {
-      handoffPolling = true
-      try {
-        await loadHandoffSessions(true)
-        queuePollFailures = 0
-      } catch {
-        queuePollFailures += 1
-      } finally {
-        handoffPolling = false
-      }
-    }
-    scheduleQueuePoll(Math.min(15000, 3000 * 2 ** queuePollFailures))
-  }, delay)
-}
-
-function scheduleDetailPoll(delay = 2000) {
-  if (detailPollTimer !== null) window.clearTimeout(detailPollTimer)
-  detailPollTimer = window.setTimeout(async () => {
-    await pollHandoffDetail()
-    scheduleDetailPoll(Math.min(15000, 2000 * 2 ** detailPollFailures))
-  }, delay)
-}
-
-function startStaffPolling() {
-  if (queuePollTimer !== null) return
-  scheduleQueuePoll()
-  scheduleDetailPoll()
-  heartbeatTimer = window.setInterval(() => {
-    if (!document.hidden) void staffHandoffApi.heartbeat().catch(() => undefined)
-  }, 10000)
-}
-
-function stopStaffPolling() {
-  if (queuePollTimer !== null) window.clearInterval(queuePollTimer)
-  if (detailPollTimer !== null) window.clearInterval(detailPollTimer)
-  if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer)
-  queuePollTimer = detailPollTimer = heartbeatTimer = null
-}
-
-function handleStaffVisibility() {
-  if (!document.hidden) {
-    void staffHandoffApi.heartbeat().catch(() => undefined)
-    scheduleQueuePoll(0)
-    scheduleDetailPoll(0)
-  }
-}
-
+/** 选择工单：清空上一张工单草稿，并并行加载改约申请与 AI 决策依据。 */
 function selectTicket(ticket: Ticket) {
   selectedTicketNo.value = ticket.ticketNo
-  draftMessage.value = ''
-  draftGenerationMode.value = null
-  draftFallbackReason.value = null
+  resetDraft()
   void loadChangeRequests(ticket.ticketNo)
   void loadTicketAiContext(ticket.ticketNo)
 }
 
-// 当前选中工单的 AI 决策依据，供坐席判断转人工原因与回复依据。
-const ticketAiContext = ref<StaffTicketContext | null>(null)
-const loadingTicketAiContext = ref(false)
-
-async function loadTicketAiContext(ticketNo: string) {
-  loadingTicketAiContext.value = true
-  try {
-    const { data } = await staffTicketApi.context(ticketNo)
-    // 请求期间切换工单时丢弃旧响应，避免依据错挂到其他工单。
-    if (selectedTicketNo.value === ticketNo) ticketAiContext.value = data
-  } catch {
-    // 无关联会话或已过期时仅展示空态，不影响工单主操作。
-    if (selectedTicketNo.value === ticketNo) ticketAiContext.value = null
-  } finally {
-    loadingTicketAiContext.value = false
-  }
+/** 改约申请的客户可见说明按申请号保存，提交时随审核动作一起发送。 */
+function handleChangeRequestMessage(payload: { requestNo: string; value: string }) {
+  changeRequestMessages.value = { ...changeRequestMessages.value, [payload.requestNo]: payload.value }
 }
 
-watch([selectedTicketNo, canOperate], () => {
-  void loadChangeRequests()
-})
-
-async function selectHandoff(session: StaffHandoffSession) {
-  selectedHandoffSessionId.value = session.session_id
-  handoffReply.value = ''
-  await loadHandoffDetail(session.session_id)
-}
-
-async function claimTicket() {
-  if (!selectedTicket.value || !auth.user) return
-  acting.value = true
-  try {
-    const { data } = await staffTicketApi.assign(selectedTicket.value.ticketNo, selectedTicket.value.assignedGroup || '客服组')
-    ElMessage.success(`已领取工单，当前状态：${data.status}`)
-    queueScope.value = 'mine'
-    await loadTickets()
-    await loadChangeRequests()
-  } finally {
-    acting.value = false
-  }
-}
-
-async function startTicket() {
-  if (!selectedTicket.value || !auth.user) return
-  acting.value = true
-  try {
-    const { data } = await staffTicketApi.start(selectedTicket.value.ticketNo)
-    ElMessage.success(`已开始处理，当前状态：${data.status}`)
-    await loadTickets()
-    await loadChangeRequests()
-  } finally {
-    acting.value = false
-  }
-}
-
-async function closeTicket() {
-  if (!selectedTicket.value || !auth.user) return
-  acting.value = true
-  try {
-    const { data } = await staffTicketApi.close(selectedTicket.value.ticketNo, closeReason.value)
-    ElMessage.success(`已关闭工单，当前状态：${data.status}`)
-    await loadTickets()
-    await loadChangeRequests()
-  } finally {
-    acting.value = false
-  }
-}
-
-async function generateDraft() {
-  if (!selectedTicket.value || generatingDraft.value) return
-  generatingDraft.value = true
-  try {
-    const { data } = await staffReplyApi.draft(selectedTicket.value.ticketNo, closeReason.value)
-    draftMessage.value = data.draft_message
-    draftGenerationMode.value = data.generation_mode ?? 'fallback'
-    draftFallbackReason.value = data.fallback_reason ?? null
-    // 模型暂不可用时后端会安全回退，明确提示坐席仍需按真实处理结果审核后发送。
-    ElMessage.success(data.generation_mode === 'llm' ? '已根据工单与会话生成 AI 话术草稿' : '已生成安全话术草稿，请结合处理结果确认')
-  } finally {
-    generatingDraft.value = false
-  }
-}
-
-async function sendReply() {
-  if (!selectedTicket.value || !draftMessage.value.trim()) {
-    ElMessage.warning('请先填写客户可见内容')
-    return
-  }
-  await staffReplyApi.send(selectedTicket.value.ticketNo, draftMessage.value)
-  draftMessage.value = ''
-  ElMessage.success('已发送给客户')
-}
-
-async function acceptHandoff() {
-  if (!selectedHandoff.value) return
-  acting.value = true
-  try {
-    await staffHandoffApi.accept(selectedHandoff.value.session_id)
-    ElMessage.success('已接入人工会话')
-    await loadHandoffSessions(true)
-  } finally {
-    acting.value = false
-  }
-}
-
-async function sendHandoffReply() {
-  if (!selectedHandoff.value || !handoffReply.value.trim()) {
-    ElMessage.warning('请先填写人工回复内容')
-    return
-  }
-  acting.value = true
-  try {
-    await staffHandoffApi.reply(selectedHandoff.value.session_id, handoffReply.value)
-    handoffReply.value = ''
-    ElMessage.success('已发送给客户')
-    await loadHandoffDetail(selectedHandoff.value.session_id)
-  } finally {
-    acting.value = false
-  }
-}
-
-async function closeHandoff() {
-  if (!selectedHandoff.value) return
-  acting.value = true
-  try {
-    await staffHandoffApi.close(selectedHandoff.value.session_id, handoffCloseMessage.value)
-    ElMessage.success('已结束人工接管，后续回到智能助手协助')
-    await loadHandoffSessions(false)
-  } finally {
-    acting.value = false
-  }
-}
-
-async function createHandoffTicket() {
-  if (!selectedHandoff.value) return
-  acting.value = true
-  try {
-    const { data } = await staffHandoffApi.createTicket(selectedHandoff.value.session_id)
-    ElMessage.success(`跟进工单已就绪：${data.ticket.ticketNo}`)
-  } finally {
-    acting.value = false
-  }
-}
-
+/** 退出登录：先停止轮询并通知在线状态下线，再清理本地登录态。 */
 async function logout() {
   stopStaffPolling()
   await staffHandoffApi.leave().catch(() => undefined)
@@ -453,6 +124,7 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', handleStaffVisibility)
   startStaffPolling()
 })
+
 onBeforeUnmount(() => {
   stopStaffPolling()
   document.removeEventListener('visibilitychange', handleStaffVisibility)
@@ -462,96 +134,29 @@ onBeforeUnmount(() => {
 
 <template>
   <el-container class="app-shell">
-    <el-aside class="sidebar" width="360px">
-      <div class="sidebar-header">
-        <h2>我的工单</h2>
-        <div class="header-actions">
-          <el-button plain @click="router.push('/staff/rag-evaluation')">RAG 评测</el-button>
-          <el-button plain @click="router.push('/staff/system-monitor')">系统监控</el-button>
-          <el-button :icon="SwitchButton" plain @click="logout">退出</el-button>
-        </div>
-      </div>
-      <p class="muted">当前坐席：{{ auth.user?.display_name }}</p>
-
-      <el-segmented
-        v-model="workMode"
-        :options="[
-          { label: '工单', value: 'tickets' },
-          { label: `人工会话 ${handoffSessions.length}`, value: 'handoff' }
-        ]"
-        class="full-button"
-      />
-
-      <template v-if="workMode === 'tickets'">
-        <el-segmented
-          v-model="queueScope"
-          :options="[
-            { label: '我的', value: 'mine' },
-            { label: '可领取', value: 'claimable' }
-          ]"
-          class="full-button"
-        />
-        <el-select v-model="selectedStatuses" class="full-button" multiple collapse-tags collapse-tags-tooltip>
-          <el-option v-for="status in statusOptions" :key="status" :label="status" :value="status" />
-        </el-select>
-        <el-button :icon="Refresh" :loading="loading" class="full-button" @click="loadTickets">刷新工单</el-button>
-      </template>
-      <template v-else>
-        <el-segmented
-          v-model="handoffScope"
-          :options="[{ label: '待接入', value: 'pending' }, { label: '我的会话', value: 'mine' }]"
-          class="full-button"
-        />
-        <el-button :icon="Refresh" :loading="handoffLoading" class="full-button" @click="loadHandoffSessions(false)">
-          刷新人工会话
-        </el-button>
-      </template>
-
-      <div v-if="workMode === 'tickets'" class="ticket-list">
-        <button
-          v-for="ticket in visibleTickets"
-          :key="ticket.ticketNo"
-          :class="['ticket-item', { active: ticket.ticketNo === selectedTicketNo }]"
-          @click="selectTicket(ticket)"
-        >
-          <strong>{{ ticket.ticketNo }}</strong>
-          <span>{{ ticket.title }}</span>
-          <div>
-            <el-tag :type="statusType(ticket.status)" size="small">{{ ticket.status }}</el-tag>
-            <el-tag size="small" type="warning">{{ ticket.priority || 'medium' }}</el-tag>
-          </div>
-          <small>处理人：{{ ticket.handlerId || '未分配' }}</small>
-          <small v-if="ticket.urgeCount">催办：{{ ticket.urgeCount }} 次</small>
-        </button>
-        <el-empty v-if="!visibleTickets.length && !loading" description="当前队列没有工单" />
-      </div>
-      <div v-else class="ticket-list">
-        <button
-          v-for="session in visibleHandoffs"
-          :key="session.session_id"
-          :class="['ticket-item', { active: session.session_id === selectedHandoffSessionId }]"
-          @click="selectHandoff(session)"
-        >
-          <strong>{{ session.title || session.session_id }}</strong>
-          <span>客户：{{ session.customer_id }}</span>
-          <div>
-            <el-tag :type="session.handoff_status === 'ACTIVE' ? 'success' : 'warning'" size="small">
-              {{ session.handoff_status === 'ACTIVE' ? '已接入' : '待接入' }}
-            </el-tag>
-            <el-tag v-if="session.handoff_reason" size="small" type="info">{{ session.handoff_reason }}</el-tag>
-            <el-tag
-              v-if="session.last_sender_type === 'customer' && (session.latest_message_id || 0) > (seenHandoffMessageIds[session.session_id] || 0)"
-              size="small"
-              type="danger"
-            >新消息</el-tag>
-          </div>
-          <small>接入人：{{ session.human_assigned_staff_name || '未接入' }}</small>
-          <small v-if="session.linked_ticket_no">跟进工单：{{ session.linked_ticket_no }}</small>
-          <small>更新时间：{{ session.updated_at || '-' }}</small>
-        </button>
-        <el-empty v-if="!handoffSessions.length && !handoffLoading" description="当前没有待接入人工会话" />
-      </div>
-    </el-aside>
+    <StaffQueueAside
+      v-model:work-mode="workMode"
+      v-model:queue-scope="queueScope"
+      v-model:selected-statuses="selectedStatuses"
+      v-model:handoff-scope="handoffScope"
+      :handoff-count="handoffSessions.length"
+      :display-name="auth.user?.display_name"
+      :status-options="statusOptions"
+      :loading="loading"
+      :visible-tickets="visibleTickets"
+      :selected-ticket-no="selectedTicketNo"
+      :handoff-loading="handoffLoading"
+      :visible-handoffs="visibleHandoffs"
+      :selected-handoff-session-id="selectedHandoffSessionId"
+      :seen-handoff-message-ids="seenHandoffMessageIds"
+      @select-ticket="selectTicket"
+      @select-handoff="selectHandoff"
+      @refresh-tickets="loadTickets"
+      @refresh-handoffs="loadHandoffSessions(false)"
+      @logout="logout"
+      @open-rag="router.push('/staff/rag-evaluation')"
+      @open-monitor="router.push('/staff/system-monitor')"
+    />
 
     <el-main class="main-panel">
       <header class="page-header">
@@ -561,311 +166,50 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <template v-if="workMode === 'handoff'">
-        <el-empty v-if="!selectedHandoff" description="请选择人工会话" />
-        <section v-else class="staff-grid handoff-grid">
-          <el-card shadow="never">
-            <template #header>
-              <div class="card-header">
-                <span>人工会话</span>
-                <el-tag :type="selectedHandoff.handoff_status === 'ACTIVE' ? 'success' : 'warning'">
-                  {{ selectedHandoff.handoff_status === 'ACTIVE' ? '人工接管中' : '等待接入' }}
-                </el-tag>
-              </div>
-            </template>
-            <el-descriptions :column="2" border>
-              <el-descriptions-item label="会话编号">{{ selectedHandoff.session_id }}</el-descriptions-item>
-              <el-descriptions-item label="交接原因">{{ handoffSummary?.handoff_reason || selectedHandoff.handoff_reason || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="请求时间">{{ selectedHandoff.human_requested_at || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="接入坐席">{{ selectedHandoff.human_assigned_staff_name || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="当前意图">{{ handoffSummary?.intent || selectedHandoff.intent || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="关联工单">{{ handoffSummary?.linked_ticket_no || selectedHandoff.linked_ticket_no || '-' }}</el-descriptions-item>
-            </el-descriptions>
+      <StaffHandoffWorkspace
+        v-if="workMode === 'handoff'"
+        v-model:reply="handoffReply"
+        v-model:close-message="handoffCloseMessage"
+        :session="selectedHandoff"
+        :summary="handoffSummary"
+        :messages="handoffMessages"
+        :can-operate-handoff="canOperateHandoff"
+        :history-available="handoffHistoryAvailable"
+        :history-access-allowed="handoffHistoryAccessAllowed"
+        :history-loading="handoffHistoryLoading"
+        :acting="acting"
+        @accept="acceptHandoff"
+        @send-reply="sendHandoffReply"
+        @create-ticket="createHandoffTicket"
+        @close="closeHandoff"
+        @load-history="loadEarlierHandoffHistory"
+      />
 
-            <section class="handoff-summary-card">
-              <div class="handoff-summary-header">
-                <strong>交接摘要</strong>
-                <el-tag size="small" type="info">最小必要信息</el-tag>
-              </div>
-              <p>{{ handoffSummary?.ai_summary || selectedHandoff.ai_summary || selectedHandoff.title || '暂无可展示的交接摘要。' }}</p>
-            </section>
-
-            <div class="handoff-history-toolbar">
-              <span>默认仅展示最近相关对话</span>
-              <el-button
-                v-if="handoffHistoryAvailable && handoffHistoryAccessAllowed"
-                :loading="handoffHistoryLoading"
-                link
-                type="primary"
-                @click="loadEarlierHandoffHistory"
-              >
-                展开更早历史
-              </el-button>
-              <span v-else-if="selectedHandoff.handoff_status === 'PENDING'" class="handoff-history-hint">
-                接入会话后可查看最近相关对话
-              </span>
-            </div>
-
-            <el-empty
-              v-if="!handoffMessages.length"
-              :description="selectedHandoff.handoff_status === 'PENDING' ? '请先接入会话，系统将提供最近相关对话。' : '暂无可展示的会话消息。'"
-              :image-size="72"
-            />
-            <div class="handoff-messages">
-              <div
-                v-for="message in handoffMessages"
-                :key="message.id"
-                :class="['handoff-message', message.sender_type]"
-              >
-                <small>{{ message.sender_type }} · {{ message.created_at }}</small>
-                <p>{{ message.content }}</p>
-              </div>
-            </div>
-          </el-card>
-
-          <el-card shadow="never">
-            <template #header>人工接管操作</template>
-            <el-alert
-              v-if="selectedHandoff.handoff_status === 'PENDING'"
-              title="该客户正在等待人工接入，接入后智能助手会暂停自动回复。"
-              :closable="false"
-              type="warning"
-              show-icon
-            />
-            <el-alert
-              v-else-if="!canOperateHandoff"
-              title="该会话已由其他坐席接入，当前账号不能回复。"
-              :closable="false"
-              type="info"
-              show-icon
-            />
-            <div class="action-row section-gap">
-              <el-button
-                v-if="selectedHandoff.handoff_status === 'PENDING'"
-                :loading="acting"
-                type="primary"
-                @click="acceptHandoff"
-              >
-                接入会话
-              </el-button>
-            </div>
-            <el-form label-position="top">
-              <el-form-item label="人工回复">
-                <el-input
-                  v-model="handoffReply"
-                  :disabled="!canOperateHandoff"
-                  :rows="8"
-                  placeholder="请输入要直接发送给客户的人工回复。"
-                  type="textarea"
-                />
-              </el-form-item>
-              <el-button :disabled="!canOperateHandoff" :loading="acting" type="primary" @click="sendHandoffReply">
-                发送给客户
-              </el-button>
-              <el-button :disabled="!canOperateHandoff" :loading="acting" @click="createHandoffTicket">
-                创建跟进工单
-              </el-button>
-
-              <el-divider />
-              <el-form-item label="结束说明">
-                <el-input v-model="handoffCloseMessage" :disabled="!canOperateHandoff" :rows="3" type="textarea" />
-              </el-form-item>
-              <el-button :disabled="!canOperateHandoff" :loading="acting" @click="closeHandoff">
-                结束人工接管
-              </el-button>
-              <el-alert
-                :closable="false"
-                type="info"
-                title="“结束人工接管”只结束当前会话，不会关闭关联的业务工单；完结工单请到“工单”页签按“领取工单 → 开始处理 → 关闭工单”操作。"
-              />
-            </el-form>
-          </el-card>
-        </section>
-      </template>
-
-      <el-empty v-else-if="!selectedTicket" description="请选择工单" />
-      <template v-else>
-        <section class="staff-grid">
-          <el-card shadow="never">
-            <template #header>工单详情</template>
-            <el-descriptions :column="2" border>
-              <el-descriptions-item label="工单号">{{ selectedTicket.ticketNo }}</el-descriptions-item>
-              <el-descriptions-item label="状态">
-                <el-tag :type="statusType(selectedTicket.status)">{{ selectedTicket.status }}</el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="优先级">{{ selectedTicket.priority || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="处理组">{{ selectedTicket.assignedGroup || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="处理人">{{ selectedTicket.handlerId || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="派单方式">{{ selectedTicket.assignedBy || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="关联订单">{{ selectedTicket.orderNo || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="SLA">{{ selectedTicket.slaDeadline || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="催办次数">{{ selectedTicket.urgeCount || 0 }}</el-descriptions-item>
-              <el-descriptions-item label="最近催办">{{ selectedTicket.lastUrgedAt || '-' }}</el-descriptions-item>
-            </el-descriptions>
-
-            <el-alert
-              v-if="selectedTicket.lastUrgeReason"
-              :title="`客户催办：${selectedTicket.lastUrgeReason}`"
-              :closable="false"
-              class="section-gap"
-              type="warning"
-              show-icon
-            />
-
-            <h3>客户问题</h3>
-            <el-alert :title="selectedTicket.content || selectedTicket.title" :closable="false" type="info" />
-
-            <h3>AI 摘要</h3>
-            <p class="plain-text">{{ selectedTicket.aiSummary || '暂无 AI 摘要' }}</p>
-
-            <section class="staff-change-requests" v-loading="loadingChangeRequests">
-              <div class="staff-change-requests__title">
-                <h3>履约变更申请</h3>
-                <span>仅审核已关联原工单的改约请求</span>
-              </div>
-              <el-empty v-if="canOperate && !ticketChangeRequests.length && !loadingChangeRequests" :image-size="44" description="暂无待审核的履约变更申请" />
-              <article v-for="request in ticketChangeRequests" :key="request.requestNo" class="staff-change-request">
-                <header>
-                  <div><b>{{ request.requestNo }}</b><span>{{ request.changeType === 'RETURN_METHOD_CHANGE' ? '退回方式调整' : '取件时间调整' }}</span></div>
-                  <el-tag size="small" :type="request.status === 'APPROVED' ? 'success' : request.status === 'REJECTED' ? 'danger' : 'warning'">{{ changeRequestStatusLabel(request.status) }}</el-tag>
-                </header>
-                <p>原偏好：{{ request.previousReturnMethod || '未登记' }}{{ request.previousPickupTimeWindow ? ` / ${request.previousPickupTimeWindow}` : '' }}</p>
-                <p>申请调整为：{{ request.requestedReturnMethod || request.previousReturnMethod || '未变更' }}{{ request.requestedPickupTimeWindow ? ` / ${request.requestedPickupTimeWindow}` : '' }}</p>
-                <p v-if="request.customerMessage" class="staff-change-request__message">客户可见说明：{{ request.customerMessage }}</p>
-                <template v-if="request.status === 'PENDING_REVIEW'">
-                  <el-input v-model="changeRequestMessages[request.requestNo]" :disabled="!canOperate" :rows="2" maxlength="500" placeholder="填写客户可见说明（可选，不要包含内部信息）" type="textarea" />
-                  <div class="action-row staff-change-request__actions">
-                    <el-button :disabled="!canOperate" :loading="decidingChangeRequestNo === request.requestNo" type="success" @click="decideChangeRequest(request, 'APPROVE')">同意调整</el-button>
-                    <el-button :disabled="!canOperate" :loading="decidingChangeRequestNo === request.requestNo" @click="decideChangeRequest(request, 'NEED_MORE_INFO')">请客户补充</el-button>
-                    <el-button :disabled="!canOperate" :loading="decidingChangeRequestNo === request.requestNo" type="danger" plain @click="decideChangeRequest(request, 'REJECT')">暂不支持</el-button>
-                  </div>
-                </template>
-              </article>
-            </section>
-          </el-card>
-
-          <el-card v-loading="loadingTicketAiContext" shadow="never">
-            <template #header>
-              <div class="card-header">
-                <span>AI 决策依据</span>
-                <el-tag v-if="!ticketAiContext || !ticketAiContext.ai_evidence.length" size="small" type="info">暂无 AI 记录</el-tag>
-              </div>
-            </template>
-            <el-empty
-              v-if="!ticketAiContext || !ticketAiContext.ai_evidence.length"
-              :image-size="44"
-              description="该工单暂无关联的 AI 决策记录"
-            />
-            <template v-else>
-              <section v-for="evidence in ticketAiContext.ai_evidence" :key="evidence.message_id" class="ai-evidence">
-                <div class="ai-evidence__meta">
-                  <el-tag size="small" :type="evidence.decision_type === 'auto_reply' ? 'success' : 'warning'">
-                    {{ evidence.decision_type || 'unknown' }}
-                  </el-tag>
-                  <span class="ai-evidence__time">{{ evidence.created_at || '' }}</span>
-                </div>
-                <p class="plain-text">{{ evidence.customer_message || '（本轮无客户可见回复）' }}</p>
-                <template v-if="evidence.risk_reasons.length">
-                  <h4>风险原因</h4>
-                  <div class="ai-evidence__reasons">
-                    <el-tag v-for="reason in evidence.risk_reasons" :key="reason" size="small" type="danger">{{ reason }}</el-tag>
-                  </div>
-                </template>
-                <template v-if="evidence.citations.length">
-                  <h4>知识库引用</h4>
-                  <ul class="ai-evidence__citations">
-                    <li v-for="citation in evidence.citations" :key="citation.citation_id || citation.doc_name">
-                      <b>{{ citation.doc_name }}</b>
-                      <el-tag
-                        size="small"
-                        :type="citation.risk_level === 'high' || citation.risk_level === 'critical' ? 'danger' : 'info'"
-                      >{{ citation.risk_level }}</el-tag>
-                      <span>{{ citation.paragraph }}</span>
-                    </li>
-                  </ul>
-                </template>
-                <template v-if="evidence.tool_results.length">
-                  <h4>工具调用</h4>
-                  <div class="ai-evidence__tools">
-                    <el-tag
-                      v-for="tool in evidence.tool_results"
-                      :key="(tool.tool_name || tool.query_type || 'tool') + String(tool.status)"
-                      size="small"
-                      :type="tool.status === 'success' ? 'success' : tool.status === 'failed' ? 'danger' : 'info'"
-                    >{{ tool.tool_name || tool.query_type || 'tool' }} · {{ tool.status }}</el-tag>
-                  </div>
-                </template>
-                <template v-if="evidence.internal_suggestion">
-                  <h4>AI 内部建议</h4>
-                  <p class="plain-text">{{ evidence.internal_suggestion }}</p>
-                </template>
-              </section>
-            </template>
-          </el-card>
-
-          <el-card shadow="never">
-            <template #header>处理操作</template>
-            <el-form label-position="top">
-              <el-alert
-                v-if="!canOperate && !canClaim"
-                title="该工单不在你名下，不能处理。"
-                :closable="false"
-                type="warning"
-              />
-              <el-alert
-                v-else-if="canClaim"
-                title="该工单待分派：请先点击“领取工单”，领取后才能开始处理或关闭工单。"
-                :closable="false"
-                type="info"
-              />
-              <div class="action-row">
-                <el-button v-if="canClaim" :icon="UserFilled" :loading="acting" type="primary" @click="claimTicket">
-                  领取工单
-                </el-button>
-                <el-button :disabled="!canOperate" :icon="Check" :loading="acting" @click="startTicket">开始处理</el-button>
-                <el-button :disabled="!canOperate" :icon="Close" :loading="acting" type="danger" @click="closeTicket">
-                  关闭工单
-                </el-button>
-              </div>
-
-              <el-divider />
-              <el-form-item label="处理结果">
-                <el-input v-model="closeReason" :disabled="!canOperate" :rows="3" type="textarea" />
-              </el-form-item>
-              <el-button :disabled="!canOperate || generatingDraft" :loading="generatingDraft" @click="generateDraft">
-                {{ generatingDraft ? '正在基于工单事实生成…' : '生成客户话术草稿' }}
-              </el-button>
-              <p v-if="generatingDraft" class="draft-generating-hint">正在结合工单处理结果、客户诉求和最近会话生成草稿，通常几秒内完成。</p>
-              <el-alert
-                v-else-if="draftGenerationMode === 'llm'"
-                class="draft-generation-status"
-                :closable="false"
-                show-icon
-                title="已使用大模型结合工单事实与最近会话生成草稿，请在发送前确认具体处理边界。"
-                type="success"
-              />
-              <el-alert
-                v-else-if="draftGenerationMode === 'fallback'"
-                class="draft-generation-status"
-                :closable="false"
-                show-icon
-                :title="`本次模型草稿未生成（${draftFallbackReason || '暂时不可用'}），当前内容为安全兜底模板；可稍后重新生成或手动编辑。`"
-                type="warning"
-              />
-              <el-form-item class="reply-editor" label="客户可见内容">
-                <el-input
-                  v-model="draftMessage"
-                  :disabled="!canOperate || generatingDraft"
-                  :rows="8"
-                  placeholder="请先生成草稿，或直接填写要发送给客户的处理说明。"
-                  type="textarea"
-                />
-              </el-form-item>
-              <el-button :disabled="!canOperate || generatingDraft" type="primary" @click="sendReply">确认发送给客户</el-button>
-            </el-form>
-          </el-card>
-        </section>
-      </template>
+      <StaffTicketWorkspace
+        v-else
+        v-model:close-reason="closeReason"
+        v-model:draft-message="draftMessage"
+        :selected-ticket="selectedTicket"
+        :ticket-change-requests="ticketChangeRequests"
+        :loading-change-requests="loadingChangeRequests"
+        :deciding-change-request-no="decidingChangeRequestNo"
+        :change-request-messages="changeRequestMessages"
+        :can-operate="canOperate"
+        :can-claim="canClaim"
+        :acting="acting"
+        :draft-generation-mode="draftGenerationMode"
+        :draft-fallback-reason="draftFallbackReason"
+        :generating-draft="generatingDraft"
+        :ticket-ai-context="ticketAiContext"
+        :loading-ticket-ai-context="loadingTicketAiContext"
+        @update:change-request-message="handleChangeRequestMessage"
+        @claim="claimTicket"
+        @start="startTicket"
+        @close="closeTicket"
+        @generate-draft="generateDraft"
+        @send-reply="sendReply"
+        @decide-change-request="decideChangeRequest"
+      />
     </el-main>
   </el-container>
 </template>

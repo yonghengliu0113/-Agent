@@ -14,3 +14,14 @@ export function statusType(status?: string) {
   if (status === 'TRANSFERRED' || status === 'REOPENED') return 'danger'
   return 'info'
 }
+
+/** 履约变更申请状态的中文展示，未知状态原样返回。 */
+export function changeRequestStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    PENDING_REVIEW: '待审核',
+    WAITING_CUSTOMER: '待客户补充',
+    APPROVED: '已同意',
+    REJECTED: '已拒绝'
+  }
+  return labels[status] || status
+}
