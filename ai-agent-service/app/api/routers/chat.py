@@ -1,9 +1,9 @@
 """会话与附件路由：会话增删查、置顶、取消转人工，以及附件上传下载。"""
+import uuid
 from pathlib import Path
 from typing import Any
-import uuid
 
-from fastapi import APIRouter, File, HTTPException, Header, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app import deps

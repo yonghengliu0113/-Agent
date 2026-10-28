@@ -1,7 +1,6 @@
 import re
 from typing import Literal
 
-
 UserGoalValue = Literal["policy_consult", "how_to", "status_query", "action_request", "human_request", "out_of_scope", "complaint", "dispute", "info_query", "other"]
 IntentValue = Literal["consult", "logistics", "refund", "exchange", "repair", "complaint", "invoice", "member", "other"]
 

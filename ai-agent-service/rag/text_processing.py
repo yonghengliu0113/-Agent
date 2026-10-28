@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-
 INTERNAL_NOTE_PATTERNS = [
     re.compile(r"^\s*(内部备注|审批备注|仅内部|internal note|approval note)[:：].*$", re.IGNORECASE),
     re.compile(r"^\s*<!--.*?-->\s*$"),

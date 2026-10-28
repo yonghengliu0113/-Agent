@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Mapping, Any
+from typing import Any, Callable, Mapping
 
 
 class AgentExecutionCancelled(Exception):

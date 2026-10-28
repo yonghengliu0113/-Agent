@@ -13,7 +13,6 @@ if str(SERVICE_ROOT) not in sys.path:
 from agents.llm_intent_analyzer import LLMIntentAnalyzer
 from schemas.intent_schema import LLMIntentDraft
 
-
 DEFAULT_DATASET_PATH = SERVICE_ROOT / "datasets" / "intent_sft" / "test.jsonl"
 METRIC_FIELDS = (
     "intent",

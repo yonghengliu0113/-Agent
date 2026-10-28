@@ -1,0 +1,49 @@
+[project]
+name = "ai-agent-service"
+version = "0.1.0"
+description = "货运智能体客服 Agent 服务（FastAPI + LangGraph + RAG + 可靠队列）"
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+# 仅检查自有代码，避免扫进 .venv 与构建产物
+extend-exclude = [".venv", "data", "artifacts", "__pycache__", "datasets"]
+
+[tool.ruff.lint]
+# 首版只启用"抓真缺陷"的规则集，全部真实达标、零 noqa：
+#   E4  导入相关错误        E9  语法错误
+#   F   未定义名/未使用导入/未使用变量（能抓到真实的死代码）
+#   I   导入排序
+# 未启用：E7（单行多语句）、B/SIM/UP（风格与现代化建议）。
+# 原因是存量代码里 E701/E702 紧凑写法较多，属纯风格问题，
+# 计划在独立的格式化批次统一处理，而不是现在把规则加进 ignore 假装达标。
+select = ["E4", "E9", "F", "I"]
+ignore = [
+    # 允许在函数内延迟 import（本仓库用于避免可选依赖在无数据库环境下失败）
+    "E402",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "agents", "graphs", "rag", "tools", "schemas", "repositories", "services", "scripts"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    # 第三方库与本仓库历史代码的过时警告不阻断构建
+    "ignore::DeprecationWarning",
+]
+
+[tool.mypy]
+python_version = "3.12"
+# 首版只对"装配层"启用类型门禁；业务层（agents/rag/services）存量类型问题
+# 实测 141 处，需要专门批次修复，不在本次重构里假装修好。
+files = ["app/core", "app/deps.py"]
+# 跟随 import 但不报告被跟随模块（存量业务层）的错误，
+# 这样门禁范围明确，不会因为历史问题导致永远红着。
+follow_imports = "silent"
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+ignore_missing_imports = true

@@ -3,10 +3,9 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from agents.order_context import resolve_order_context
 from agents.intent_normalizer import is_logistics_message as normalize_is_logistics_message
+from agents.order_context import resolve_order_context
 from schemas.intent_schema import ActionTurnExtraction, IntentResult, ReturnGoodsSlots, SlotMetadata
-
 
 ACTION_SLOT_RULES: dict[str, dict[str, Any]] = {
     "return_goods": {

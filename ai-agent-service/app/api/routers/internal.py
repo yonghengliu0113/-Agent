@@ -1,7 +1,7 @@
 """内部回调路由：Java 业务系统把工单状态同步回会话。"""
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Header, HTTPException
 
 from app import deps
 from app.api import helpers

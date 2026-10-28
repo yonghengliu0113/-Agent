@@ -1,14 +1,13 @@
 """RAG 回答质量校验，覆盖引用有效性、证据覆盖和可选 LLM 裁判。"""
 
+import hashlib
 import json
 import os
 import re
-import hashlib
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Protocol
 
 from schemas.intent_schema import Citation
-
 
 _MARKER_PATTERN = re.compile(r"【(?:来源|引用)[:：]?(kb-[a-f0-9]{12})】")
 # 引用标记通常紧跟在句号后，必须与前一句一起切分，否则会误判为未引用。

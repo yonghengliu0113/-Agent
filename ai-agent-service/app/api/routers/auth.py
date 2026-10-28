@@ -1,7 +1,7 @@
 """登录态路由：对接 Java 业务系统完成登录与当前用户查询。"""
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Header, HTTPException
 
 from app import deps
 from app.api import helpers

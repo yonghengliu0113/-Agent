@@ -269,7 +269,6 @@ def build_checklist(report: dict[str, Any]) -> str:
     lines.append("## 二、逐题验收")
     lines.append("")
     agent_rows = {row["sample"]["query"]: row for row in agent.get("rows", [])}
-    base_rows = {row["sample"]["query"]: row for row in baseline.get("rows", [])}
 
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in baseline.get("rows", []):
@@ -295,7 +294,7 @@ def build_checklist(report: dict[str, Any]) -> str:
                     lines.append(f"- 缺失事实：{_escape('；'.join(arow['missing_required_facts']))}")
                 if arow.get("forbidden_claims"):
                     lines.append(f"- ⚠️ 违规表述：{_escape('；'.join(arow['forbidden_claims']))}")
-            lines.append(f"- 人工验收结论：☐ 通过　☐ 部分通过　☐ 不通过　　备注：____________")
+            lines.append("- 人工验收结论：☐ 通过　☐ 部分通过　☐ 不通过　　备注：____________")
             lines.append("")
     return "\n".join(lines)
 
@@ -305,7 +304,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Render freight RAG evaluation report and acceptance checklist.")
     parser.add_argument("--report", default="data/rag_eval/report_freight.json")
     parser.add_argument("--golden", default="data/rag_eval/golden_freight_v1.jsonl")
-    parser.add_argument("--out", default="../../docs/rag-eval")
+    # 一次性评测产物属于历史材料，默认输出到归档目录，避免在 docs/ 下生成平行文档。
+    parser.add_argument("--out", default="../../archive/产品与研究产物/评测报告")
     args = parser.parse_args()
 
     payload = json.loads(Path(args.report).read_text(encoding="utf-8"))

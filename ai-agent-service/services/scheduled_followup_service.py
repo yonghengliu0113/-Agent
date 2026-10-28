@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import time
 import uuid
@@ -17,7 +16,8 @@ from tools.order_tools import OrderTools
 
 try:
     from redis.exceptions import ConnectionError as RedisConnectionError
-    from redis.exceptions import RedisError, ResponseError, TimeoutError as RedisTimeoutError
+    from redis.exceptions import RedisError, ResponseError
+    from redis.exceptions import TimeoutError as RedisTimeoutError
 except ImportError:  # pragma: no cover - 仅用于未安装 Redis 客户端的最小开发环境
     RedisError = RedisConnectionError = RedisTimeoutError = ResponseError = RuntimeError
 

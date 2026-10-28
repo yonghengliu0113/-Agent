@@ -4,7 +4,6 @@ from pathlib import Path
 
 from scripts.validate_migration import summarize
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

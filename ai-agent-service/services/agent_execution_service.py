@@ -7,15 +7,14 @@ from typing import Any, Callable
 from agents.conversation_context import build_conversation_context
 from agents.customer_service_agent import CustomerServiceAgent
 from repositories.chat_repository import ChatMessageRepository, ChatSessionRepository
-from repositories.evaluation_repository import EvaluationRepository
 from repositories.conversation_state_repository import ConversationStateRepository, FollowupNotificationRepository
+from repositories.evaluation_repository import EvaluationRepository
 from schemas.intent_schema import AgentReplyRequest
-from services.resilient_client import ResilienceError
-from services.resilient_client import ResilientClient
-from services.staff_presence_service import StaffPresenceService
-from services.execution_cancellation import AgentExecutionCancelled, CancellationToken
 from services.conversation_state_service import ConversationStateService, TurnResolution
 from services.conversation_summary_service import ConversationSummaryJob, ConversationSummaryQueue
+from services.execution_cancellation import AgentExecutionCancelled, CancellationToken
+from services.resilient_client import ResilienceError, ResilientClient
+from services.staff_presence_service import StaffPresenceService
 from tools.ticket_tools import TicketTools
 
 

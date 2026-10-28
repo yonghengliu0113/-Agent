@@ -42,7 +42,14 @@ def evaluate_online_trace(trace: dict[str, Any]) -> dict[str, Any]:
 def evaluate_golden_case(case_data: dict[str, Any]) -> dict[str, Any]:
     """评测带参考答案和预期工具的黄金样本，供夜间回归与版本对比使用。"""
     try:
-        from deepeval.metrics import AnswerRelevancyMetric, ContextualPrecisionMetric, ContextualRecallMetric, ContextualRelevancyMetric, FaithfulnessMetric, ToolCorrectnessMetric
+        from deepeval.metrics import (
+            AnswerRelevancyMetric,
+            ContextualPrecisionMetric,
+            ContextualRecallMetric,
+            ContextualRelevancyMetric,
+            FaithfulnessMetric,
+            ToolCorrectnessMetric,
+        )
         from deepeval.test_case import LLMTestCase, ToolCall, ToolCallParams
     except ImportError as exc:
         raise DeepEvalUnavailableError("未安装 deepeval，请执行 pip install -r requirements.txt") from exc
@@ -85,8 +92,9 @@ def _build_judge_model():
     """复用现有 LangChain 模型配置包装为 DeepEvalBaseLLM，避免新增供应商凭证。"""
     if not (os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("LLM_API_KEY")):
         raise DeepEvalUnavailableError("未配置 LLM Judge 密钥")
-    from agents.llm_intent_analyzer import LLMIntentAnalyzer
     from deepeval.models.base_model import DeepEvalBaseLLM
+
+    from agents.llm_intent_analyzer import LLMIntentAnalyzer
 
     analyzer = LLMIntentAnalyzer()
     chat_model = analyzer._build_llm(0)

@@ -1,25 +1,18 @@
 """FastAPI 应用装配：中间件、生命周期事件与路由挂载。业务逻辑不写在这里。"""
-from datetime import datetime, timezone
-from pathlib import Path
 import asyncio
 import os
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 
 from app import deps
 from app.api import helpers
+from app.api.routers import agent, auth, chat, customer, evaluation, internal, staff, system
 from app.core import config
 from services.observability import HTTP_LATENCY, HTTP_REQUESTS, set_request_context, tracer
 from services.runtime_protection import metrics
-from app.api.routers import system
-from app.api.routers import auth
-from app.api.routers import agent
-from app.api.routers import chat
-from app.api.routers import evaluation
-from app.api.routers import customer
-from app.api.routers import internal
-from app.api.routers import staff
 
 app = FastAPI(title="Enterprise Customer Agent Service", version="0.1.0")
 

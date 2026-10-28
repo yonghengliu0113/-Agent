@@ -2,19 +2,19 @@
 
 import json
 from datetime import datetime, timezone
-from typing import Any
 
+from repositories.base import BaseRepository
 from repositories.chat_repository import ChatSessionRepository
 
 
-class StaffHandoffAuditRepository:
+class StaffHandoffAuditRepository(BaseRepository):
     """保存座席主动展开人工会话历史的审计事件。"""
 
     def __init__(self, session_repository: ChatSessionRepository) -> None:
         self.session_repository = session_repository
         self.database = session_repository.database
         if not self.database.is_postgres:
-            self._init_table()
+            self._init_tables()
 
     def record_history_access(
         self,
@@ -45,7 +45,7 @@ class StaffHandoffAuditRepository:
                 ),
             )
 
-    def _init_table(self) -> None:
+    def _init_tables(self) -> None:
         """为本地 SQLite 创建审计表；PostgreSQL 由 Flyway SQL 接管。"""
         with self.database.connection() as conn:
             conn.execute(

@@ -8,23 +8,37 @@ from typing import Any
 from langchain_core.runnables import RunnableLambda
 from pydantic import ValidationError
 
-from agents.action_request import ACTION_SLOT_RULES, enrich_action_analysis
+from agents.action_request import enrich_action_analysis
 from agents.intent_normalizer import (
     has_realtime_order_signal,
     is_delivery_not_received_message,
-    is_freight_logistics_message as normalize_is_freight_logistics_message,
-    infer_intent as normalize_intent,
-    infer_user_goal as normalize_user_goal,
-    is_action_request_message as normalize_is_action_request_message,
     is_high_risk_out_of_scope_message,
     is_how_to_message,
     is_human_request_message,
-    is_identity_message as normalize_is_identity_message,
-    is_logistics_message as normalize_is_logistics_message,
     is_order_detail_query_message,
-    is_order_query_message as normalize_is_order_query_message,
     is_order_statistics_message,
     is_out_of_scope_message,
+)
+from agents.intent_normalizer import (
+    infer_intent as normalize_intent,
+)
+from agents.intent_normalizer import (
+    infer_user_goal as normalize_user_goal,
+)
+from agents.intent_normalizer import (
+    is_action_request_message as normalize_is_action_request_message,
+)
+from agents.intent_normalizer import (
+    is_freight_logistics_message as normalize_is_freight_logistics_message,
+)
+from agents.intent_normalizer import (
+    is_identity_message as normalize_is_identity_message,
+)
+from agents.intent_normalizer import (
+    is_logistics_message as normalize_is_logistics_message,
+)
+from agents.intent_normalizer import (
+    is_order_query_message as normalize_is_order_query_message,
 )
 from agents.llm_intent_analyzer import LLMIntentAnalyzer
 from agents.order_context import has_fuzzy_order_reference, resolve_order_context
@@ -3071,7 +3085,6 @@ class CustomerServiceAgent:
         if "订单" not in message or not self._contains_any(message, ["查", "查询", "看", "看看", "帮我"]):
             return False
         login_user = (conversation_context or {}).get("login_user_context") or {}
-        session_memory = (conversation_context or {}).get("session_memory") or {}
         display_name = self._normalize_identity_name(login_user.get("display_name"))
         explicit_names = [self._normalize_identity_name(name) for name in re.findall(r"([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z·]{1,11})的订单", message)]
         current_claim = self._extract_self_claimed_name_from_message(message)

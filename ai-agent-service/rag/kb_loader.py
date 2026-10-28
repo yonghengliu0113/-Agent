@@ -10,7 +10,6 @@ from typing import Any
 from rag.document_loader import DocumentLoader
 from rag.text_processing import KnowledgeChunk, split_into_chunks
 
-
 # 知识库目录名到检索元数据的映射；目录名即业务范围（business_scope）。
 SCOPE_CONFIG: dict[str, dict[str, Any]] = {
     "refund": {

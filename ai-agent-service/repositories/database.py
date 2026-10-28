@@ -55,8 +55,8 @@ class DatabaseAdapter:
                 conn.close()
             return
         try:
-            from psycopg_pool import ConnectionPool
             from psycopg.rows import dict_row
+            from psycopg_pool import ConnectionPool
         except ImportError as exc:
             raise RuntimeError("PostgreSQL Repository 需要安装 psycopg_pool") from exc
         pool = ConnectionPool(self.config.postgres_dsn, kwargs={"row_factory": dict_row}, min_size=int(os.getenv("DB_POOL_MIN_SIZE", "1")), max_size=int(os.getenv("DB_POOL_MAX_SIZE", "10")), open=True)

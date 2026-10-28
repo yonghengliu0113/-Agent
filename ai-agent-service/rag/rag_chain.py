@@ -8,8 +8,8 @@ from langchain_core.runnables import RunnableLambda
 from rag.knowledge_taxonomy import infer_business_scope
 from rag.pg_config import RagConfigError
 from rag.pg_vector_store import PgVectorStore
-from rag.query_rewriter import LLMQueryRewriter
 from rag.quality import ensure_citation_ids
+from rag.query_rewriter import LLMQueryRewriter
 from rag.vector_store import InMemoryVectorStore
 from schemas.intent_schema import Citation
 from services.cache_service import CacheService

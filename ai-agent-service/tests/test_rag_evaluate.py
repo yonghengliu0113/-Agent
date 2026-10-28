@@ -11,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rag.evaluate import evaluate, load_eval_samples, load_kb_chunks
 from rag.vector_store import InMemoryVectorStore
 
-
 BASE_DIR = Path(__file__).resolve().parents[1]
 EVAL_DIR = BASE_DIR / "data" / "rag_eval"
 KB_DIR = BASE_DIR / "data" / "kb_sources"

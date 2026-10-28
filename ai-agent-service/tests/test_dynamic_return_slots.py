@@ -10,7 +10,6 @@ from agents.customer_service_agent import CustomerServiceAgent
 from graphs.ticket_process_graph import build_ticket_process_graph
 from schemas.intent_schema import IntentResult
 
-
 ORDER_NO = "EC202606220001"
 
 

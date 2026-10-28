@@ -7,11 +7,12 @@ import time
 import uuid
 from contextlib import contextmanager
 
-from prometheus_client import Counter, Gauge, Histogram
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from prometheus_client import Counter, Gauge, Histogram
+
 
 def _configure_tracing() -> None:
     """仅在配置 Collector 地址时启用 OTLP 导出；本地开发仅创建 Span。"""

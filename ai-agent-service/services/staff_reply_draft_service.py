@@ -17,7 +17,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from services.llm_model_factory import ChatModelConfig, build_chat_model
 from services.resilient_client import ResilientClient, ResilientInvoker
 
-
 # 座席草稿服务既可能由 FastAPI 加载，也可能被单独测试或脚本调用；显式读取服务目录的配置，
 # 避免因启动目录不同导致明明配置了模型却被误判为“未配置”。
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -193,7 +192,7 @@ class StaffReplyDraftService:
         order_text = f"关于订单 {ticket['order_no']}，" if ticket.get("order_no") else ""
         reason_text = ""
         if ticket.get("customer_request"):
-            reason_text = f"您反馈的情况我们已认真记录。"
+            reason_text = "您反馈的情况我们已认真记录。"
         next_step = "后续进展会在当前会话或工单中同步，请您留意消息。"
         if ticket.get("ticket_status") == "CLOSED":
             next_step = "如您对本次处理仍有疑问，欢迎在当前会话继续补充，我们会进一步协助核实。"

@@ -10,10 +10,10 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from services.agent_execution_queue import AgentExecutionQueue
+from services.execution_cancellation import AgentExecutionCancelled
 from services.observability import CANCELLATION_PARTIAL_TOKENS, WORKER_DURATION, WORKER_JOBS, set_request_context
 from services.resilient_client import ResilienceError
 from services.stream_event_service import StreamEventService
-from services.execution_cancellation import AgentExecutionCancelled
 
 
 def run_once(

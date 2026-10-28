@@ -1,13 +1,13 @@
 import argparse
 import hashlib
 import json
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from rag.embeddings import OpenAICompatibleEmbeddingClient, vector_literal
 from rag.evaluate import load_kb_chunks
 from rag.pg_config import load_pgvector_config
+from rag.pg_connection import connect_pg
 from rag.text_processing import KnowledgeChunk
 
 
@@ -249,11 +249,11 @@ def _hash_text(text: str) -> str:
 
 def _connect(database_url: str) -> Any:
     """延迟导入 psycopg，避免 memory 后端不安装数据库依赖也能运行。"""
-    try:
-        import psycopg
-    except ImportError as exc:
-        raise RuntimeError("psycopg is required for pgvector ingestion") from exc
-    return psycopg.connect(database_url)
+    return connect_pg(
+        database_url,
+        error=RuntimeError,
+        message="psycopg is required for pgvector ingestion",
+    )
 
 
 if __name__ == "__main__":

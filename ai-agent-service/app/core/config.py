@@ -1,6 +1,6 @@
 """集中式配置：环境变量只允许在本模块读取，其它模块通过 config.XXX 访问。"""
-from pathlib import Path
 import os
+from pathlib import Path
 
 BUSINESS_SERVICE_URL = os.getenv("BUSINESS_SERVICE_URL", "http://localhost:8081")
 

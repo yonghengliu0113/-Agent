@@ -11,7 +11,6 @@ import torch
 from peft import PeftConfig, PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ADAPTER_DIR = SERVICE_ROOT / "artifacts" / "intent_sft" / "customer-intent-lora"
 DEFAULT_TEST_FILE = SERVICE_ROOT / "datasets" / "intent_sft" / "test.jsonl"

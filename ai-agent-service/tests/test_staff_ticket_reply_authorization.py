@@ -5,8 +5,8 @@ from fastapi.testclient import TestClient
 import app
 from app import deps
 from app.api import helpers
-from app.core import config
 from app.api.routers import internal as internal_router
+from app.core import config
 
 
 def _staff_user(_: str | None) -> dict:
@@ -146,8 +146,9 @@ def test_ticket_owner_can_generate_customer_reply_draft(monkeypatch) -> None:
 
 def test_ticket_customer_mismatch_cannot_write_to_linked_session(monkeypatch) -> None:
     """工单 externalSessionNo 指向其他客户会话时必须阻断，不能把座席消息写错会话。"""
-    from fastapi import HTTPException
     from types import SimpleNamespace
+
+    from fastapi import HTTPException
 
     monkeypatch.setattr(
         deps,

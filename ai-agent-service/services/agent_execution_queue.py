@@ -4,12 +4,11 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from schemas.intent_schema import AgentExecutionJob
-from services.observability import CANCELLATIONS, DLQ_DEPTH, QUEUE_DEPTH, QUEUE_PENDING, QUEUE_RETRIES, QUEUE_RUNNING
 from services.execution_cancellation import CancellationToken
+from services.observability import CANCELLATIONS, DLQ_DEPTH, QUEUE_DEPTH, QUEUE_PENDING, QUEUE_RETRIES, QUEUE_RUNNING
 
 
 class AgentExecutionQueue:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -12,7 +11,6 @@ from zoneinfo import ZoneInfo
 
 from repositories.conversation_state_repository import ConversationStateConflict, ConversationStateRepository
 from services.cache_service import CacheService
-
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 CONFIRM_WORDS = {"是", "是的", "确认", "没错", "对", "对的", "继续", "可以"}

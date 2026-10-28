@@ -1,8 +1,8 @@
 """身份缓存测试，验证令牌不落盘、命中时不重复调用 Java，缓存异常时可回源。"""
 
-from services.auth_identity_cache import AuthIdentityCache
 from app import deps
 from app.api import helpers
+from services.auth_identity_cache import AuthIdentityCache
 from services.cache_service import CacheService
 
 

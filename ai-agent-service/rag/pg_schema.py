@@ -2,7 +2,7 @@ import argparse
 from typing import Any
 
 from rag.pg_config import RagConfigError, load_embedding_config, load_pgvector_config
-
+from rag.pg_connection import connect_pg
 
 REQUIRED_TABLES = {"rag_documents", "rag_chunks", "rag_embeddings", "rag_retrieval_logs"}
 
@@ -200,11 +200,7 @@ def _index_sql(*, include_vector: bool) -> list[str]:
 
 def _connect(database_url: str) -> Any:
     """延迟导入 psycopg，避免未安装依赖时影响 memory 后端测试。"""
-    try:
-        import psycopg
-    except ImportError as exc:
-        raise RagConfigError("psycopg is required for pgvector backend") from exc
-    return psycopg.connect(database_url)
+    return connect_pg(database_url)
 
 
 if __name__ == "__main__":

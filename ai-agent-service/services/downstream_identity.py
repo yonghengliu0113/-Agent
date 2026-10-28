@@ -9,7 +9,6 @@ import time
 
 from services.observability import current_context
 
-
 _EXECUTION_PREFIX = "agent-execution:"
 
 

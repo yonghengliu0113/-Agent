@@ -1,13 +1,12 @@
+import hashlib
 import math
 import re
-import hashlib
 from datetime import datetime
 from typing import Any
 
 from rag.knowledge_taxonomy import collections_for_intent, infer_business_scope
 from rag.text_processing import KnowledgeChunk
 from schemas.intent_schema import Citation
-
 
 # query rewrite 补充词的计分权重：只用于补充召回，不能压过客户原话里的实词。
 EXPANSION_WEIGHT = 0.25

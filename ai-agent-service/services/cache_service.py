@@ -10,7 +10,6 @@ from typing import Any, Callable
 
 from services.observability import CACHE
 
-
 _EMPTY = {"__cache_empty__": True}
 
 

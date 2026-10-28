@@ -4,7 +4,8 @@ from typing import Any
 
 from rag.embeddings import OpenAICompatibleEmbeddingClient, vector_literal
 from rag.knowledge_taxonomy import collections_for_intent, infer_business_scope
-from rag.pg_config import PgVectorConfig, RagConfigError, load_pgvector_config
+from rag.pg_config import PgVectorConfig, load_pgvector_config
+from rag.pg_connection import connect_pg
 from rag.pg_schema import check_schema
 from rag.vector_store import is_customer_visible_chunk, rewrite_query
 from schemas.intent_schema import Citation
@@ -266,8 +267,4 @@ class PgVectorStore:
 
     def _connect(self) -> Any:
         """延迟导入 psycopg，保持 memory 后端无需数据库依赖。"""
-        try:
-            import psycopg
-        except ImportError as exc:
-            raise RagConfigError("psycopg is required for pgvector backend") from exc
-        return psycopg.connect(self.config.database_url)
+        return connect_pg(self.config.database_url)

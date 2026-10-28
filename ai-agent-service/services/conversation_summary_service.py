@@ -14,7 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from repositories.chat_repository import ChatMessageRepository, ChatSessionRepository
 from repositories.conversation_state_repository import ConversationStateRepository
-from services.conversation_state_service import ConversationStateService, RECENT_TURN_MESSAGE_LIMIT
+from services.conversation_state_service import RECENT_TURN_MESSAGE_LIMIT, ConversationStateService
 from services.llm_model_factory import ChatModelConfig, build_chat_model
 from services.resilient_client import ResilientClient, ResilientInvoker
 

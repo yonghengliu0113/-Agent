@@ -5,7 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from repositories.conversation_state_repository import ConversationStateRepository
-from services.conversation_state_service import ConversationStateService, SHANGHAI
+from services.conversation_state_service import SHANGHAI, ConversationStateService
 
 
 def _service(tmp: str) -> ConversationStateService:

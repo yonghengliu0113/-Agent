@@ -6,12 +6,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from rag.kb_loader import DOCUMENT_CONFIG_OVERRIDES, SCOPE_CONFIG, load_kb_chunks
+from rag.kb_loader import load_kb_chunks
 from rag.pg_vector_store import PgVectorStore
-from rag.vector_store import InMemoryVectorStore
 from rag.quality import AnswerJudge, build_llm_judge_from_env, build_rag_trace, ensure_citation_ids, lexical_similarity
+from rag.vector_store import InMemoryVectorStore
 from schemas.intent_schema import Citation
-
 
 # 知识库目录到业务范围的映射统一由 rag.kb_loader 维护，避免在线检索与离线评测配置漂移。
 

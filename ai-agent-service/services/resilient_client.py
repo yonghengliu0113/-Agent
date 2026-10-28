@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 import httpx
+
 from services.observability import observe_downstream
 
 
@@ -335,7 +336,7 @@ class ResilientInvoker:
                     wait_timeout = min(remaining_total, first_token_timeout if not received_first_chunk else remaining_total)
                     try:
                         event_type, payload = messages.get(timeout=min(wait_timeout, 0.15))
-                    except queue.Empty as exc:
+                    except queue.Empty:
                         # 每 150ms 检查取消；真正超时仍由总时限判定。
                         continue
                     if event_type == "chunk":

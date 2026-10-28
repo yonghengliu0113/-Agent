@@ -4,11 +4,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from redis.exceptions import ResponseError
+
 from repositories.chat_repository import ChatMessageRepository, ChatSessionRepository
 from repositories.conversation_state_repository import ConversationStateRepository, FollowupNotificationRepository
 from services.conversation_state_service import ConversationStateService
 from services.scheduled_followup_service import ScheduledFollowupProcessor, ScheduledFollowupQueue
-from redis.exceptions import ResponseError
 
 
 class FakeRedis:

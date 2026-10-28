@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
-
 if "unittest" not in sys.modules:
     load_dotenv()
 

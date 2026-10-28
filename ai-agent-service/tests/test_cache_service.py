@@ -1,8 +1,8 @@
 """验证 Redis 缓存命中、失效、容错和业务缓存接入。"""
 
-from services.cache_service import CacheService
 from rag.rag_chain import RagChain, normalize_retrieval_cache_query
 from schemas.intent_schema import Citation
+from services.cache_service import CacheService
 
 
 class FakeRedis:

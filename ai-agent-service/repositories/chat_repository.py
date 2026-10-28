@@ -1,9 +1,8 @@
 import json
-import os
 from datetime import datetime
-from pathlib import Path
 from typing import Any
-from repositories.database import DatabaseAdapter, DatabaseConfig
+
+from repositories.base import BaseRepository
 
 
 def customer_reference_payloads(citations: Any) -> list[dict[str, Any]]:
@@ -34,17 +33,11 @@ def customer_reference_payloads(citations: Any) -> list[dict[str, Any]]:
     return references
 
 
-class ChatSessionRepository:
+class ChatSessionRepository(BaseRepository):
     """会话仓储，负责客服会话的创建、状态更新和按客户隔离查询。"""
 
-    def __init__(self, db_path: str | None = None, database: DatabaseAdapter | None = None) -> None:
-        """初始化会话数据库，并确保会话表和消息表存在。"""
-        default_path = Path(__file__).resolve().parents[1] / "data" / "customer_agent.db"
-        self.db_path = Path(db_path or os.getenv("CHAT_DB_PATH", str(default_path)))
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.database = database or DatabaseAdapter(DatabaseConfig.from_env(self.db_path))
-        if not self.database.is_postgres:
-            self._init_tables()
+    env_var = "CHAT_DB_PATH"
+    default_db_name = "customer_agent.db"
 
     def create(self, customer_id: int | None, title: str) -> dict[str, Any]:
         """创建新客服会话，customer_id 来自登录态，用于后续数据隔离。"""
@@ -478,17 +471,6 @@ class ChatSessionRepository:
                 """
             )
 
-    def _connect(self):
-        """每次数据库操作使用独立连接，避免多请求共享连接带来的线程问题。"""
-        return self.database.connection()
-
-    def _ensure_column(self, conn, table_name: str, column_name: str, column_type: str) -> None:
-        """为旧 SQLite 数据库补充新增字段，避免历史 Demo 数据启动失败。"""
-        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-        if any(row["name"] == column_name for row in rows):
-            return
-        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
-
     def _row_to_session(self, row) -> dict[str, Any]:
         """把 SQLite 行转换为接口返回字典。"""
         return {
@@ -516,13 +498,14 @@ class ChatSessionRepository:
         }
 
 
-class ChatMessageRepository:
+class ChatMessageRepository(BaseRepository):
     """消息仓储，负责保存用户消息、AI 回复以及按会话查询历史。"""
 
     def __init__(self, session_repository: ChatSessionRepository) -> None:
         """复用会话仓储的数据库路径，保证会话和消息写入同一个 SQLite 文件。"""
         self.session_repository = session_repository
         self.db_path = session_repository.db_path
+        self.database = session_repository.database
 
     def save(
         self,
@@ -787,10 +770,6 @@ class ChatMessageRepository:
                 "ticket_result": ticket_result,
             }
         return None
-
-    def _connect(self):
-        """每次消息操作使用独立连接，保证 Streamlit 多次请求下稳定读写。"""
-        return self.session_repository.database.connection()
 
     def _load_extra(self, value: str | None) -> dict[str, Any]:
         """还原消息扩展 JSON，解析失败时返回空对象避免接口异常。"""

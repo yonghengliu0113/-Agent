@@ -4,7 +4,6 @@ from typing import Any
 
 from agents.order_context import build_order_context_record, extract_order_no
 
-
 ORDER_NO_PATTERN = re.compile(r"(?<![A-Za-z])(?:EC)?\d{10,18}", flags=re.IGNORECASE)
 TICKET_NO_PATTERN = re.compile(r"T\d{12,24}", flags=re.IGNORECASE)
 

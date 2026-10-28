@@ -13,7 +13,6 @@ if str(SERVICE_ROOT) not in sys.path:
 
 from schemas.intent_schema import LLMIntentDraft
 
-
 DATASET_DIR = SERVICE_ROOT / "datasets" / "intent_sft"
 DATASET_FILES = ("train.jsonl", "validation.jsonl", "test.jsonl")
 EXPECTED_ROLES = ("system", "user", "assistant")

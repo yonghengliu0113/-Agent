@@ -1,9 +1,9 @@
 """Agent 对话路由：同步回复、SSE 流式回复、队列结果查询与工具调用。"""
-from typing import Any
 import os
 import time
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Header, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app import deps
@@ -113,7 +113,7 @@ async def reply_stream(payload: AgentReplyRequest, request: Request, authorizati
             yield "event: generating\ndata: {\"status\": \"generating\"}\n\n"
             result = await asyncio.to_thread(deps.agent_execution_service.execute, execution_payload)
             yield f"event: completed\ndata: {json.dumps(result, ensure_ascii=False)}\n\n"
-        except Exception as exc:
+        except Exception:
             # 外部模型或业务工具异常不向客户暴露内部堆栈。
             metrics.mark_degraded()
             payload_data = helpers._overload_response() | {"error_code": "AGENT_UPSTREAM_UNAVAILABLE"}

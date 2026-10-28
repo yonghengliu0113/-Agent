@@ -3,24 +3,18 @@
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
-from repositories.database import DatabaseAdapter, DatabaseConfig
+from repositories.base import BaseRepository
 
 
-class ConversationStateRepository:
+class ConversationStateRepository(BaseRepository):
     """维护每个 session 的结构化状态，并通过版本号避免并发覆盖。"""
 
-    def __init__(self, db_path: str | None = None, database: DatabaseAdapter | None = None) -> None:
-        default_path = Path(__file__).resolve().parents[1] / "data" / "customer_agent.db"
-        self.db_path = Path(db_path or os.getenv("CHAT_DB_PATH", str(default_path)))
-        self.database = database or DatabaseAdapter(DatabaseConfig.from_env(self.db_path))
-        if not self.database.is_postgres:
-            self._init_tables()
+    env_var = "CHAT_DB_PATH"
+    default_db_name = "customer_agent.db"
 
     def get(self, session_no: str) -> dict[str, Any] | None:
         """读取会话状态快照；损坏 JSON 按空状态处理，避免阻断主链路。"""
@@ -93,15 +87,8 @@ class ConversationStateRepository:
             )
 
 
-class FollowupNotificationRepository:
+class FollowupNotificationRepository(BaseRepository):
     """持久化定时复核任务及其客户可见通知。"""
-
-    def __init__(self, db_path: str | None = None, database: DatabaseAdapter | None = None) -> None:
-        default_path = Path(__file__).resolve().parents[1] / "data" / "customer_agent.db"
-        self.db_path = Path(db_path or os.getenv("CHAT_DB_PATH", str(default_path)))
-        self.database = database or DatabaseAdapter(DatabaseConfig.from_env(self.db_path))
-        if not self.database.is_postgres:
-            self._init_tables()
 
     def create_followup(
         self,

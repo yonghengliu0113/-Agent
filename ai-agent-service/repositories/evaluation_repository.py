@@ -6,21 +6,16 @@ import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
-from repositories.database import DatabaseAdapter, DatabaseConfig
+
+from repositories.base import BaseRepository
 
 
-class EvaluationRepository:
+class EvaluationRepository(BaseRepository):
     """使用 SQLite 实现可恢复的评测队列；生产环境可按同一接口迁移 PostgreSQL。"""
 
-    def __init__(self, db_path: str | None = None, database: DatabaseAdapter | None = None) -> None:
-        default = Path(__file__).resolve().parents[1] / "data" / "evaluations.db"
-        self.db_path = Path(db_path or os.getenv("EVALUATION_DB_PATH", str(default)))
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.database = database or DatabaseAdapter(DatabaseConfig.from_env(self.db_path))
-        if not self.database.is_postgres:
-            self._init_tables()
+    env_var = "EVALUATION_DB_PATH"
+    default_db_name = "evaluations.db"
 
     def capture_online_trace(self, payload: dict[str, Any]) -> dict[str, Any]:
         """脱敏、采样并持久化在线 Trace；该方法不调用 DeepEval 或任何 Judge。"""
@@ -152,21 +147,9 @@ class EvaluationRepository:
             self._ensure_column(conn, "evaluation_job", "payload", "TEXT")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_evaluation_trace_status ON evaluation_trace(status, created_at)")
 
-    def _connect(self):
-        """每次操作关闭 SQLite 连接，避免 Windows 测试和 Worker 长运行锁定数据库文件。"""
-        return self.database.connection()
-
     @staticmethod
     def _row_to_trace(row) -> dict[str, Any]:
         return {"trace_id": row["trace_id"], "attempts": row["attempts"] + 1, "payload": _load(row["payload"])}
-
-    @staticmethod
-    def _ensure_column(conn, table: str, column: str, column_type: str) -> None:
-        """兼容已创建的本地评测库，避免新增重试字段后启动失败。"""
-        columns = conn.execute(f"PRAGMA table_info({table})").fetchall()
-        if not any(row["name"] == column for row in columns):
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
-
 
 def _sanitize_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """删除客户身份与敏感业务字段，只保留 DeepEval 所需的最小 Trace。"""

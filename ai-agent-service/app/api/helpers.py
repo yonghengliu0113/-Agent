@@ -1,9 +1,9 @@
 """跨路由共享的请求辅助函数：鉴权、字段裁剪、入队编排与指标采样。"""
-from datetime import datetime, timedelta, timezone
-from typing import Any
 import asyncio
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from fastapi import HTTPException, Request
 from prometheus_client import REGISTRY

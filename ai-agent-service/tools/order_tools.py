@@ -1,11 +1,11 @@
 """订单 Tool：通过统一韧性客户端访问 Java 业务系统。"""
 
-import os
 import hashlib
+import os
 
-from services.resilient_client import ResilienceError, ResilientClient
 from services.cache_service import CacheService
 from services.downstream_identity import build_business_headers, identity_cache_key
+from services.resilient_client import ResilienceError, ResilientClient
 
 
 class OrderTools:

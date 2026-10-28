@@ -2,7 +2,7 @@
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Header, HTTPException
 
 from app import deps
 from app.api import helpers
