@@ -1,292 +1,193 @@
-# Enterprise Customer Agent
+# 货运智能体（Enterprise Customer Agent）
 
-企业智能客服受控 Agent 平台。项目采用 Vue、FastAPI、LangChain/LangGraph、RAG、Redis Stream 与 Spring Boot，覆盖客户咨询、订单/物流查询、多轮售后、工单流转、人工接管、异步评测和运行监控。
+企业智能客服受控 Agent 平台：客户自助端 + 坐席工作台 + FastAPI Agent 服务 + Spring Boot 业务系统。
 
-当前定位是：**可运行的企业客服 Agent 原型 + 电商领域实现**。项目适合作为开发演示、作品集和内部测试基础，但尚未完成真实生产上线所需的全部安全、容量和部署验收，不能宣称已经支持 100 QPS 或可直接承载真实客户流量。
+本文只讲**怎么用起来**。设计与原因看 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，接口看 [docs/API.md](docs/API.md)，排障/压测/迁移看 [docs/RUNBOOK.md](docs/RUNBOOK.md)。
 
-## 核心设计
+---
 
-```text
-Vue 客户端 / 坐席工作台
-          │
-          ▼
-FastAPI Agent API
-  鉴权、限流、入队、SSE、结果查询
-          │
-          ▼
-Redis Stream Consumer Group
-  幂等、ACK、Pending 恢复、重试、DLQ
-          │
-          ▼
-独立 Agent Worker
-          │
-          ▼
-AgentExecutionService
-  会话记忆、LangGraph、RAG、工具调用、Trace
-       │                       │
-       ▼                       ▼
-pgvector / 知识库       Spring Boot 业务服务
-                         认证、订单、物流、工单
+## 1. 前置依赖
 
-线上脱敏 Trace ──► 独立 DeepEval Worker ──► 评测结果与失败诊断
-```
+| 依赖 | 版本要求 | 说明 |
+| --- | --- | --- |
+| JDK | 17 | Java 业务服务 |
+| Maven | 3.9+ | 构建 Java |
+| Python | 3.12 / 3.13 | Agent 服务 |
+| Node.js | 20+（开发机为 22） | Vue 前端 |
+| Redis | 7.x | 队列、限流准入、SSE 事件 |
+| PostgreSQL + pgvector | 15+（可选） | 生产存储；本地默认用 SQLite + 内存检索，**不需要**装 |
 
-本项目采用“LLM 语义理解 + 后端确定性编排”的受控 Agent 架构：LLM 负责意图识别、槽位抽取和回复生成；订单归属、权限、风险、幂等和工具执行由后端规则、状态机与 LangGraph 工作流控制。
+macOS 开发机上 JDK 17、Maven 3.9.16、Redis 7.2.9 已随仓库放在 `.tools/` 下，`start-local.sh` 会直接用它们，不必另装。
 
-## 已实现能力
+## 2. 首次安装依赖
 
-- 客户登录、订单列表、订单详情、物流轨迹、工单列表和处理进度。
-- RAG 知识检索、知识库版本缓存、引用 ID、必要事实覆盖和无依据断言检查。
-- 退货规则咨询与真实退货动作分流，避免知识问答误触发业务写操作。
-- 多轮 `pending_action` 与动态槽位编排，支持一次性提供、乱序补充、取消和超时确认。
-- 当前会话记忆、登录身份优先级和用户自称姓名冲突保护。
-- Redis Stream 可靠任务队列、Worker 心跳、结果状态查询和 SSE 增量事件。
-- LLM 与 Java 工具统一超时、重试、熔断、并发舱壁和安全降级。
-- 工单幂等创建、人工接管、坐席处理和客户侧进度闭环。
-- DeepEval 黄金集回归与线上脱敏 Trace 异步评测。
-- Prometheus `/metrics`、OpenTelemetry Trace 和内部系统监控页面。
-
-## 项目结构
-
-```text
-enterprise-customer-agent/
-├── business-service/        # Spring Boot 核心业务服务
-├── ai-agent-service/        # FastAPI、Agent、RAG、队列、Worker、评测
-│   ├── agents/              # 意图、对话上下文、动作状态机
-│   ├── graphs/              # LangGraph 业务工作流
-│   ├── rag/                 # 检索、入库、引用、评测与 Worker
-│   ├── tools/               # 订单、物流、工单受控工具
-│   ├── repositories/        # 会话、日志与评测仓储
-│   └── services/            # 执行服务、队列、缓存、韧性与可观测性
-├── frontend-vue/            # 当前唯一前端（客户自助入口 + 坐席工作台）
-├── load-tests/              # k6 混合场景压测脚本
-├── deploy/                  # Kubernetes 资源草案
-├── docs/                    # 架构、接口、迁移、评测和压测资料
-├── start-all.bat            # Windows 本地一键启动入口
-└── start-all.ps1            # 启动编排脚本
-```
-
-## 本地快速启动
-
-### 前置依赖
-
-- JDK 17 和 Maven 3.9+
-- Python 3.13 与项目虚拟环境
-- Node.js 20+ 和 npm
-- Docker Desktop，用于本地 Redis 与 pgvector/PostgreSQL
-
-首次运行前安装依赖：
-
-```powershell
+```bash
+# Python
 cd ai-agent-service
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 
-cd ..\frontend-vue
+# 前端
+cd ../frontend-vue
 npm install
 ```
 
-在 `ai-agent-service/.env` 中配置模型和嵌入服务密钥。不要提交真实 API Key、Token 或客户数据。
+`ai-agent-service/.env` 已包含本地所需变量（模型密钥、`REDIS_URL`、`DB_PROVIDER`、`RAG_STORE_BACKEND`、`BUSINESS_SERVICE_URL` 等）。**不要提交真实密钥**。
 
-完成依赖准备后，在仓库根目录运行：
+## 3. 启动
 
-```bat
-start-all.bat
+### 一键（macOS，推荐）
+
+```bash
+cd /Users/yongheng/Desktop/货运智能体/enterprise-customer-agent
+./start-local.sh
 ```
 
-脚本会尝试启动 Redis、pgvector/PostgreSQL、Java 业务服务、Agent API、独立 Agent Worker 和 Vue 前端。
+脚本按固定顺序拉起 Redis → Java(8081) → Agent API(8000) → Agent Worker → Vue(5173)，每一步都做健康等待。日志在 `.logs/`。
 
-启动后可访问：
+Windows 用 `start-all.bat`（需要 Docker Desktop）。
 
-- Vue 前端：`http://localhost:5173`
-- Agent 健康检查：`http://localhost:8000/health`
-- Agent 指标：`http://localhost:8000/metrics`
-- Java 健康检查：`http://localhost:8081/actuator/health`
-- Java 指标：`http://localhost:8081/actuator/prometheus`
-- RAG 评测页：`http://localhost:5173/staff/rag-evaluation`
-- 系统监控页：`http://localhost:5173/staff/system-monitor`
-- 客户站内通知：`http://localhost:5173/customer/notifications`
+### 手动（等价，五个终端）
 
-如果 Docker、Java 或 Agent API 启动失败，脚本不会继续启动前端，避免页面持续出现 `ECONNREFUSED`。
+严格按此顺序，**前一个就绪再起下一个**：
 
-## 手动启动
+```bash
+# 1) Redis
+.tools/redis-7.2.9/src/redis-server --port 6379 --save '' --appendonly no
 
-### 1. Java 业务服务
+# 2) Java 业务服务 → 等 /actuator/health 为 UP（冷启动 10~30 秒）
+cd business-service && mvn spring-boot:run
 
-```powershell
-cd business-service
-mvn spring-boot:run
-```
-
-### 2. Agent API
-
-```powershell
+# 3) Agent API
 cd ai-agent-service
-$env:REDIS_URL="redis://127.0.0.1:6379/0"
-$env:AGENT_EXECUTION_QUEUE_ENABLED="true"
-.\.venv\Scripts\python.exe -m uvicorn app:app --reload --port 8000
-```
+.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
 
-### 3. 独立 Agent Worker
-
-```powershell
+# 4) Agent Worker（不起它，请求只会排队不会返回）
 cd ai-agent-service
-$env:REDIS_URL="redis://127.0.0.1:6379/0"
-$env:AGENT_EXECUTION_QUEUE_ENABLED="true"
-.\.venv\Scripts\python.exe -m rag.agent_execution_worker
+.venv/bin/python -m rag.agent_execution_worker
+
+# 5) Vue 前端
+cd frontend-vue && npm run dev
 ```
 
-### 4. 定时物流复核 Worker
+> 生产/多副本部署必须设置 `REDIS_URL` 与 `AGENT_EXECUTION_QUEUE_ENABLED=true`，并把 Worker 拆成独立进程（`agent-worker`），不要把 LLM 执行压进 API 进程。
 
-```powershell
-cd ai-agent-service
-$env:REDIS_URL="redis://127.0.0.1:6379/0"
-.\.venv\Scripts\python.exe -m rag.scheduled_followup_worker
+## 4. 端口与入口
+
+| 服务 | 地址 |
+| --- | --- |
+| 前端（客户侧） | http://localhost:5173/customer |
+| 前端（坐席） | http://localhost:5173/staff |
+| RAG 评测页 | http://localhost:5173/staff/rag-evaluation |
+| 系统监控页 | http://localhost:5173/staff/system-monitor |
+| Agent 健康检查 | http://localhost:8000/health |
+| Agent 指标 | http://localhost:8000/metrics |
+| Agent 接口文档 | http://localhost:8000/docs |
+| Java 健康检查 | http://localhost:8081/actuator/health |
+| Java 指标 | http://localhost:8081/actuator/prometheus |
+
+## 5. 验证"真的起来了"
+
+三步，全过才算成功：
+
+```bash
+# ① 三个健康检查
+curl -s http://127.0.0.1:8081/actuator/health        # UP
+curl -s http://127.0.0.1:8000/health                 # {"status":"ok"}
+curl -s http://127.0.0.1:8000/api/agent/status       # queue.enabled / active_worker 均为 true
+
+# ② 页面能打开
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5173    # 200
+
+# ③ 端到端一条真实提问（鉴权 → Agent → 返回）
+TOKEN=$(curl -s -X POST http://127.0.0.1:8081/api/auth/login \
+  -H 'Content-Type: application/json' -d '{"username":"demo","password":"123456"}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+curl -s -X POST http://127.0.0.1:8000/api/agent/reply \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"message":"货损索赔有什么时间限制","route_target":"ai"}'
 ```
 
-该 Worker 使用独立 Redis Stream。到期任务只重新校验订单归属、查询最新物流、写回原会话并创建站内通知，不会自动创建退货或退款工单。
+第 ③ 步返回带 `answer` 的 JSON 即为通链路。若 `llm.configured=false`，说明 `.env` 缺模型密钥，此时走规则兜底——能答但质量差。
 
-### 5. 会话滚动摘要 Worker
+## 6. 登录账号（Demo）
 
-```powershell
-cd ai-agent-service
-$env:REDIS_URL="redis://127.0.0.1:6379/0"
-$env:CONVERSATION_SUMMARY_ENABLED="true"
-.\.venv\Scripts\python.exe -m rag.conversation_summary_worker
-```
+| 角色 | 账号 | 密码 | 入口 |
+| --- | --- | --- | --- |
+| 客户 | `demo` | `123456` | `/customer/login` |
+| 客户 | `buyer` | `123456` | `/customer/login` |
+| 坐席 | `staff` | `123456` | `/staff/login` |
+| 坐席 | `staff2` | `123456` | `/staff/login` |
 
-该 Worker 只消费会话标识和摘要游标，从数据库读取窗口外历史并生成滚动摘要；不会把 Authorization 或原始对话复制到 Redis Stream。
+这些是演示账号，明文密码与内置 JWT/内部密钥**必须在真实上线前替换**。
 
-### 6. Vue 前端
+## 7. 关键配置
 
-```powershell
-cd frontend-vue
-npm run dev
-```
-
-### 7. DeepEval Worker（按需启动）
-
-```powershell
-cd ai-agent-service
-.\.venv\Scripts\python.exe -m rag.evaluation_worker --interval 2
-```
-
-DeepEval Worker 与在线 Agent Worker 必须保持独立，客户请求只采集脱敏 Trace，不同步等待 LLM Judge。
-
-## 关键配置
-
-| 环境变量 | 作用 | 本地默认/要求 |
-|---|---|---|
-| `DEEPSEEK_API_KEY` / `LLM_API_KEY` | 在线 LLM 凭证 | 使用真实模型时必填 |
-| `LLM_BASE_URL`、`LLM_MODEL` | OpenAI 兼容模型地址与模型名 | 按供应商配置 |
-| `REDIS_URL` | 队列、事件流和缓存 | `redis://127.0.0.1:6379/0` |
-| `AGENT_EXECUTION_QUEUE_ENABLED` | 启用 Redis Stream 在线队列 | 生产应为 `true` |
+| 环境变量 | 作用 | 默认 |
+| --- | --- | --- |
+| `DEEPSEEK_API_KEY` / `LLM_API_KEY` | 在线 LLM 凭证，不配则全程规则兜底 | 空 |
+| `LLM_BASE_URL` / `LLM_MODEL` / `LLM_PROVIDER` | OpenAI 兼容模型地址、模型名、供应商 | 见 `.env` |
+| `REDIS_URL` | 队列、事件流、缓存、跨副本限流 | `redis://127.0.0.1:6379/0` |
+| `AGENT_EXECUTION_QUEUE_ENABLED` | 启用 Redis Stream 在线队列（生产必须 `true`） | 未设置时同步执行 |
+| `AGENT_MAX_CONCURRENCY` / `AGENT_PER_SUBJECT_CONCURRENCY` | 全局 / 单主体并发上限 | 20 / 2 |
 | `BUSINESS_SERVICE_URL` | Java 业务服务地址 | `http://localhost:8081` |
-| `DB_PROVIDER` | Python Repository 数据库 | 本地默认 `sqlite`，生产目标为 `postgres` |
-| `DATABASE_URL` | Python 会话、日志和评测 PostgreSQL DSN | `DB_PROVIDER=postgres` 时必填 |
-| `RAG_STORE_BACKEND` | RAG 后端 | 本地默认 `memory`，生产目标为 `pgvector` |
-| `RAG_DATABASE_URL` | pgvector 数据库 DSN | `RAG_STORE_BACKEND=pgvector` 时必填 |
-| `RAG_STRICT_STARTUP` | RAG 初始化失败时是否禁止静默回退 | 生产应为 `true` |
-| `RAG_LLM_QUERY_REWRITE_ENABLED` | 启用知识咨询 LLM 查询重写 | 默认 `false`，需显式启用 |
-| `RAG_QUERY_REWRITE_PROVIDER`、`RAG_QUERY_REWRITE_MODEL` | 独立轻量重写模型供应商与模型名 | 启用时必填 |
-| `RAG_QUERY_REWRITE_API_KEY`、`RAG_QUERY_REWRITE_BASE_URL` | 独立重写模型凭证与兼容地址 | 不复用在线回复模型凭证 |
-| `RAG_QUERY_REWRITE_TOTAL_TIMEOUT` | 查询重写总超时 | 默认 `3` 秒，失败自动规则降级 |
-| `CONVERSATION_SUMMARY_ENABLED` | 启用超过 15 轮历史的异步滚动摘要 | 一键启动时为 `true` |
-| `CONVERSATION_SUMMARY_PROVIDER`、`CONVERSATION_SUMMARY_MODEL` | 独立摘要模型配置 | 未配置时复用在线模型供应商与模型名 |
-| `CONVERSATION_SUMMARY_API_KEY`、`CONVERSATION_SUMMARY_BASE_URL` | 摘要模型凭证与兼容地址 | 未配置时回退在线模型配置 |
-| `CONVERSATION_SUMMARY_TOTAL_TIMEOUT` | 单次摘要模型总超时 | 默认 `5` 秒，不影响在线回复 |
-| `AGENT_INTERNAL_SECRET` | Python 与 Java 内部接口密钥 | 生产必须注入强随机值 |
-| `AGENT_EXECUTION_SECRET` | Worker 短期执行凭证签名密钥 | 生产必须注入强随机值 |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP Collector 地址 | 未配置时只创建本地 Span |
+| `DB_PROVIDER` / `DATABASE_URL` | Python 仓储数据库 | `sqlite` / 空 |
+| `RAG_STORE_BACKEND` / `RAG_DATABASE_URL` | RAG 后端 | `memory` / 空 |
+| `RAG_STRICT_STARTUP` | RAG 初始化失败是否禁止静默回退（生产建议 `true`） | `false` |
+| `RAG_LLM_QUERY_REWRITE_ENABLED` | 启用 LLM 查询重写（关闭时用规则） | `false` |
+| `CONVERSATION_SUMMARY_ENABLED` | 超 15 轮历史异步滚动摘要（需同时运行 `conversation_summary_worker`） | 代码默认按 `true` 处理；`start-all.ps1` 显式设为 `true` |
+| `AGENT_INTERNAL_SECRET` / `AGENT_EXECUTION_SECRET` | 内部接口密钥 / Worker 执行凭证签名密钥 | 生产必须注入强随机值 |
+| `AGENT_AUTO_ASSIGN_TICKET` | 是否允许 Agent 低风险自动派单 | 关闭 |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP Collector 地址 | 空（只建本地 Span） |
 
-本地默认使用 SQLite Repository 和内存检索，便于快速演示。生产环境不能依赖这些默认值。
+`app/core/config.py` 只覆盖其中一部分，其余变量由各模块直接读取（存量未收口）；改配置前建议 `grep -rn "os.getenv" ai-agent-service --include=*.py` 全量确认。新增变量加在 `config.py`。
 
-## 架构与安全边界
+## 8. 目录速览
 
-- Java `business-service` 是核心业务系统，Python Agent 不直接写订单、物流或工单业务表。
-- 客户身份以 Java 登录态为准，前端传入的 `customer_id`、姓名或订单号不能作为授权依据。
-- 队列中不保存客户原始 Authorization Token，Worker 使用短期内部执行凭证调用 Java。
-- 创建工单等写操作必须携带幂等键，并在 Java 侧再次校验客户与订单归属。
-- AI 不直接执行退款、赔付、删除、关闭投诉等高风险动作。
-- 投诉、争议、法律风险、低置信度和下游异常进入人工审核或安全降级。
-- 客户侧不展示 Prompt、风险原因、工具原始结果、内部建议或 Trace 调试字段。
+```text
+enterprise-customer-agent/
+├── ai-agent-service/
+│   ├── app/            # FastAPI 装配层：main.py / deps.py / core/config.py / api/
+│   ├── agents/ graphs/ rag/ tools/ schemas/ repositories/ services/ tests/
+│   └── data/ datasets/ training/ prompts/   # 业务资产，勿随意改动
+├── business-service/   # Spring Boot 业务系统
+├── frontend-vue/       # 唯一前端
+├── deploy/             # K8s 资源草案
+├── load-tests/         # k6 压测脚本
+└── docs/               # ARCHITECTURE / API / RUNBOOK / ADR / _baseline / observability
+```
 
-## 测试与检查
+## 9. 提交前必跑
 
-Python 全量测试：
-
-```powershell
+```bash
 cd ai-agent-service
-.\.venv\Scripts\python.exe -m pytest tests
+.venv/bin/python -m pytest tests
+.venv/bin/python -m compileall agents graphs rag schemas tools repositories services app
+
+cd ../business-service && mvn -q -DskipTests compile
+cd ../frontend-vue && npm run typecheck
 ```
 
-Python 语法检查：
+语法检查的对象是 **`app` 包**，不是已删除的 `app.py`。
 
-```powershell
-cd ai-agent-service
-.\.venv\Scripts\python.exe -m compileall agents graphs rag schemas tools repositories services app.py
-```
+## 10. 能力现状（一句话版）
 
-Java 测试：
+已打通：客户登录 → 提交问题 → 意图识别与槽位编排 → RAG 引用回答 / 建工单 → 坐席接管处理 → 客户看到回复与进度；另有异步 DeepEval 评测、Prometheus 指标、Redis Stream 可靠队列。
 
-```powershell
-cd business-service
-mvn test
-```
+**尚未完成生产验收**：容量压测（10/20/50/100 QPS）未执行、PostgreSQL 方言未在生产验证、Demo 账号与硬编码密钥待替换。详见 [ARCHITECTURE.md 第 7 节](docs/ARCHITECTURE.md)。
 
-前端类型检查和构建：
+## 11. 文档地图
 
-```powershell
-cd frontend-vue
-npm run typecheck
-npm run build
-```
+| 文档 | 用途 |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 分层边界、模块职责、一条消息的旅程、状态机、评测结论、已知限制 |
+| [docs/API.md](docs/API.md) | Agent API + Java Business API 完整契约 |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | 启动停止、排障、监控指标、压测、数据迁移 |
+| [docs/ADR/](docs/ADR/) | 架构决策记录 |
+| [docs/observability/](docs/observability/) | Grafana 看板与告警规则 |
+| [AGENTS.md](AGENTS.md) | 给未来 agent 的贡献指南 |
+| `archive/产品与研究产物/` | 历史 PRD、调研、交付批次、验证证据（**非权威**） |
 
-最近一次本地审计（2026-07-17）：
+## 12. License
 
-- Python：203 项通过、1 项失败，另有 22 个子测试通过；当前失败是会话历史工单催办路由回归。
-- Java：6 项通过。
-- Vue：类型检查通过。
-- 10/20/50/100 QPS 尚未完成真实分阶段压测。
-
-因此当前版本不能打生产 Release Tag。修复回归后还需要完成 PostgreSQL/Redis 集成、端到端测试、故障注入和容量验收。
-
-## 生产上线前必须完成
-
-1. 移除 Demo 账号、明文密码和硬编码 JWT/内部密钥，接入正式身份系统与 Secret 管理。
-2. 真正打通 Python Repository PostgreSQL 方言、持久连接池、迁移执行和回滚验证。
-3. 修正生产 Compose/Kubernetes 中的 `DB_PROVIDER`、`DATABASE_URL`、持久卷、健康检查和完整服务资源。
-4. 为 Redis Stream 增加消费后删除或裁剪、真实积压统计、延迟重试和数据留存策略。
-5. 建立 CI 门禁，并增加真实 PostgreSQL、Redis、Controller/Auth 和浏览器 E2E 测试。
-6. 按 10/20/50/100 QPS 分阶段执行压测和 LLM 429、超时、Java/Redis/Worker 故障注入。
-7. 完成备份恢复、密钥轮换、部署回滚、灰度发布和告警演练。
-
-容量现状与压测脚本说明见 [Agent 分阶段容量报告](docs/performance/agent_100qps_capacity_report.md)。
-
-## 通用性与迁移方向
-
-当前队列、SSE、会话、韧性、缓存、可观测性、Trace 和评测框架具有较高复用价值，但意图 Schema、售后状态机、工具 API、RAG 分类、Java DTO 和前端文案仍绑定当前电商业务。
-
-迁移到另一个商城时，建议逐步抽象：
-
-- `AgentKernel`：执行服务、队列、SSE、会话、韧性、Trace 和评测。
-- `DomainPack`：意图、动作、槽位、风险策略、Prompt、工作流和领域评测集。
-- `BusinessConnector`：身份、订单、物流和工单的统一接口与商城 Adapter。
-- `ToolRegistry`：工具输入输出 Schema、读写属性、权限、幂等、超时和风险级别。
-- `KnowledgePack`：商城独立知识库、版本、业务分类和黄金评测集。
-- `/capabilities`：向前端下发支持的动作、字段和状态文案，减少页面硬编码。
-
-真正的通用性验收标准是：接入第二个商城时不修改 `AgentKernel`，只新增 Connector、DomainPack、KnowledgePack 和必要的领域 UI 扩展。
-
-## 相关文档
-
-- [PRD](docs/PRD.md)
-- [API 接口文档](docs/API接口文档.md)
-- [DeepEval 评测架构](docs/DeepEval评测架构.md)
-- [PostgreSQL 迁移说明](docs/postgres-migration.md)
-- [可观测性说明](docs/observability/README.md)
-- [高并发部署与压测](docs/高并发部署与压测.md)
-
-## License
-
-本项目使用 [MIT License](LICENSE)。
+[MIT](LICENSE)
