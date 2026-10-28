@@ -5,6 +5,8 @@ import json
 from fastapi.testclient import TestClient
 
 import app
+from app import deps
+from app.api import helpers
 from repositories.chat_repository import ChatMessageRepository, ChatSessionRepository
 from repositories.staff_handoff_audit_repository import StaffHandoffAuditRepository
 
@@ -97,14 +99,14 @@ def test_staff_handoff_defaults_to_window_and_audits_expansion(monkeypatch) -> N
         "ai_summary": "客户希望了解订单状态。",
     }
 
-    monkeypatch.setattr(app, "_require_staff_user", lambda _: {"user_id": 9, "role": "staff"})
-    monkeypatch.setattr(app, "_get_staff_visible_handoff_session", lambda *_: session)
-    monkeypatch.setattr(app, "_get_staff_owned_handoff_session", lambda *_: session)
-    monkeypatch.setattr(app, "_handoff_session_payload", lambda value: value)
-    monkeypatch.setattr(app, "_staff_handoff_summary", lambda _: {"title": "交接", "ai_summary": "客户希望了解订单状态。"})
-    monkeypatch.setattr(app, "chat_messages", fake_messages)
+    monkeypatch.setattr(helpers, "_require_staff_user", lambda _: {"user_id": 9, "role": "staff"})
+    monkeypatch.setattr(helpers, "_get_staff_visible_handoff_session", lambda *_: session)
+    monkeypatch.setattr(helpers, "_get_staff_owned_handoff_session", lambda *_: session)
+    monkeypatch.setattr(helpers, "_handoff_session_payload", lambda value: value)
+    monkeypatch.setattr(helpers, "_staff_handoff_summary", lambda _: {"title": "交接", "ai_summary": "客户希望了解订单状态。"})
+    monkeypatch.setattr(deps, "chat_messages", fake_messages)
     monkeypatch.setattr(
-        app.staff_handoff_audit,
+        deps.staff_handoff_audit,
         "record_history_access",
         lambda **kwargs: audit_events.append(kwargs),
     )

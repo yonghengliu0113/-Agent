@@ -3,6 +3,8 @@
 from fastapi.testclient import TestClient
 
 import app
+from app import deps
+from app.api import helpers
 
 
 class FakeFollowups:
@@ -32,8 +34,8 @@ class FakeFollowups:
 
 def test_notification_endpoints_use_authenticated_customer(monkeypatch) -> None:
     fake = FakeFollowups()
-    monkeypatch.setattr(app, "followup_notifications", fake)
-    monkeypatch.setattr(app, "_current_login_user", lambda _: {"customer_id": 8, "role": "customer"})
+    monkeypatch.setattr(deps, "followup_notifications", fake)
+    monkeypatch.setattr(helpers, "_current_login_user", lambda _: {"customer_id": 8, "role": "customer"})
     client = TestClient(app.app)
 
     response = client.get("/api/customer/notifications", headers={"Authorization": "Bearer redacted"})
@@ -47,8 +49,8 @@ def test_notification_endpoints_use_authenticated_customer(monkeypatch) -> None:
 
 def test_customer_cannot_mutate_unknown_followup(monkeypatch) -> None:
     fake = FakeFollowups()
-    monkeypatch.setattr(app, "followup_notifications", fake)
-    monkeypatch.setattr(app, "_current_login_user", lambda _: {"customer_id": 9, "role": "customer"})
+    monkeypatch.setattr(deps, "followup_notifications", fake)
+    monkeypatch.setattr(helpers, "_current_login_user", lambda _: {"customer_id": 9, "role": "customer"})
     response = TestClient(app.app).post("/api/customer/follow-ups/F1/cancel")
     assert response.status_code == 409
     assert fake.last_customer_id == 9

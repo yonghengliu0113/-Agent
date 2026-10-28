@@ -1,6 +1,8 @@
 """身份缓存测试，验证令牌不落盘、命中时不重复调用 Java，缓存异常时可回源。"""
 
 from services.auth_identity_cache import AuthIdentityCache
+from app import deps
+from app.api import helpers
 from services.cache_service import CacheService
 
 
@@ -66,8 +68,6 @@ def test_identity_cache_uses_thirty_minute_ttl_cap_and_falls_back_when_redis_is_
 
 def test_current_login_user_routes_bearer_token_through_identity_cache(monkeypatch):
     """接口鉴权入口必须实际使用身份缓存，不能继续每次直连 Java。"""
-    import app
-
     calls: list[str] = []
 
     class FakeIdentityCache:
@@ -84,10 +84,10 @@ def test_current_login_user_routes_bearer_token_through_identity_cache(monkeypat
         def json():
             return {"user_id": 1, "customer_id": 2, "display_name": "客户", "role": "customer"}
 
-    monkeypatch.setattr(app, "identity_cache", FakeIdentityCache())
-    monkeypatch.setattr(app.business_client, "request_sync", lambda *_args, **_kwargs: FakeResponse())
+    monkeypatch.setattr(deps, "identity_cache", FakeIdentityCache())
+    monkeypatch.setattr(deps.business_client, "request_sync", lambda *_args, **_kwargs: FakeResponse())
 
-    user = app._current_login_user("Bearer cache-test-token")
+    user = helpers._current_login_user("Bearer cache-test-token")
 
     assert calls == ["cache-test-token"]
     assert user["customer_id"] == 2

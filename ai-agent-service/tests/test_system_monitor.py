@@ -3,6 +3,8 @@
 from fastapi.testclient import TestClient
 
 import app
+from app import deps
+from app.api import helpers
 from services.observability import CACHE, DOWNSTREAM_REQUESTS
 
 
@@ -24,9 +26,9 @@ def _staff_user(_: str | None) -> dict:
 
 def test_staff_can_read_system_monitor(monkeypatch):
     """staff 用户可以读取 Worker、队列、DLQ 与指标聚合快照。"""
-    monkeypatch.setattr(app, "_current_login_user", _staff_user)
+    monkeypatch.setattr(helpers, "_current_login_user", _staff_user)
     monkeypatch.setattr(
-        app,
+        deps,
         "agent_execution_queue",
         FakeMonitorQueue({
             "enabled": True,
@@ -54,7 +56,7 @@ def test_staff_can_read_system_monitor(monkeypatch):
 
 def test_customer_cannot_read_system_monitor(monkeypatch):
     """非 staff 角色不能访问内部运维数据。"""
-    monkeypatch.setattr(app, "_current_login_user", lambda _: {"user_id": 2, "customer_id": 2, "role": "customer"})
+    monkeypatch.setattr(helpers, "_current_login_user", lambda _: {"user_id": 2, "customer_id": 2, "role": "customer"})
 
     response = TestClient(app.app).get("/api/staff/system/monitor", headers={"Authorization": "Bearer customer-token"})
 
@@ -63,9 +65,9 @@ def test_customer_cannot_read_system_monitor(monkeypatch):
 
 def test_monitor_returns_partial_snapshot_when_redis_unavailable(monkeypatch):
     """Redis 队列不可用时接口仍返回 200，并在 queue 中标记 unavailable。"""
-    monkeypatch.setattr(app, "_current_login_user", _staff_user)
+    monkeypatch.setattr(helpers, "_current_login_user", _staff_user)
     monkeypatch.setattr(
-        app,
+        deps,
         "agent_execution_queue",
         FakeMonitorQueue({
             "enabled": True,
@@ -89,9 +91,9 @@ def test_monitor_returns_partial_snapshot_when_redis_unavailable(monkeypatch):
 
 def test_monitor_aggregates_llm_and_cache_metrics(monkeypatch):
     """LLM timeout/429/circuit_open 与缓存命中率应从 Prometheus Registry 聚合到 JSON 响应。"""
-    monkeypatch.setattr(app, "_current_login_user", _staff_user)
+    monkeypatch.setattr(helpers, "_current_login_user", _staff_user)
     monkeypatch.setattr(
-        app,
+        deps,
         "agent_execution_queue",
         FakeMonitorQueue({
             "enabled": True,
@@ -118,4 +120,4 @@ def test_monitor_aggregates_llm_and_cache_metrics(monkeypatch):
     assert data["llm"]["rate_limit_429"] >= 1
     assert data["llm"]["circuit_open"] >= 1
     assert data["cache"]["rag"]["hit_rate"] is not None
-    assert app._cache_metric("empty_cache_metric_for_test")["hit_rate"] is None
+    assert helpers._cache_metric("empty_cache_metric_for_test")["hit_rate"] is None

@@ -120,7 +120,10 @@ def test_worker_survives_transient_redis_timeout_and_disconnect() -> None:
 def test_worker_does_not_import_fastapi_app() -> None:
     """防止 Worker 再次反向依赖 app.py，保持进程边界清晰。"""
     source = (Path(__file__).parents[1] / "rag" / "agent_execution_worker.py").read_text(encoding="utf-8")
-    app_source = (Path(__file__).parents[1] / "app.py").read_text(encoding="utf-8")
+    # app.py 已拆分为 app/ 包，逐个文件校验 Worker 与 API 层的进程边界
+    app_root = Path(__file__).parents[1] / "app"
+    app_sources = {p: p.read_text(encoding="utf-8") for p in app_root.rglob("*.py")}
+    assert app_sources, "app 包不应为空"
     assert "from app import" not in source
     assert "AgentExecutionService" in source
-    assert "from rag.agent_execution_worker import" not in app_source
+    assert all("from rag.agent_execution_worker import" not in text for text in app_sources.values())

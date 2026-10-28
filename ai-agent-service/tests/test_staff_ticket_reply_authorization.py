@@ -3,6 +3,10 @@
 from fastapi.testclient import TestClient
 
 import app
+from app import deps
+from app.api import helpers
+from app.core import config
+from app.api.routers import internal as internal_router
 
 
 def _staff_user(_: str | None) -> dict:
@@ -21,10 +25,10 @@ def _ticket(handler_id: int | None) -> dict:
 
 def test_unassigned_ticket_cannot_generate_or_send_customer_reply(monkeypatch) -> None:
     """未领取工单即使对坐席可见，也不能生成或发送客户可见话术。"""
-    monkeypatch.setattr(app, "_current_login_user", _staff_user)
-    monkeypatch.setattr(app, "_get_staff_ticket", lambda *_: _ticket(None))
+    monkeypatch.setattr(helpers, "_current_login_user", _staff_user)
+    monkeypatch.setattr(helpers, "_get_staff_ticket", lambda *_: _ticket(None))
     # 归属校验必须在查找客户会话之前执行，避免无权坐席探测工单关联会话。
-    monkeypatch.setattr(app, "_find_ticket_chat_context", lambda *_: (_ for _ in ()).throw(AssertionError("不应查询会话")))
+    monkeypatch.setattr(helpers, "_find_ticket_chat_context", lambda *_: (_ for _ in ()).throw(AssertionError("不应查询会话")))
     client = TestClient(app.app)
 
     draft = client.post(
@@ -45,9 +49,9 @@ def test_unassigned_ticket_cannot_generate_or_send_customer_reply(monkeypatch) -
 
 def test_other_staff_ticket_cannot_generate_or_send_customer_reply(monkeypatch) -> None:
     """其他坐席名下的工单不能被当前坐席用于草稿或客户回复。"""
-    monkeypatch.setattr(app, "_current_login_user", _staff_user)
-    monkeypatch.setattr(app, "_get_staff_ticket", lambda *_: _ticket(202))
-    monkeypatch.setattr(app, "_find_ticket_chat_context", lambda *_: (_ for _ in ()).throw(AssertionError("不应查询会话")))
+    monkeypatch.setattr(helpers, "_current_login_user", _staff_user)
+    monkeypatch.setattr(helpers, "_get_staff_ticket", lambda *_: _ticket(202))
+    monkeypatch.setattr(helpers, "_find_ticket_chat_context", lambda *_: (_ for _ in ()).throw(AssertionError("不应查询会话")))
     client = TestClient(app.app)
 
     response = client.post(
@@ -72,16 +76,16 @@ def test_ticket_owner_sends_reply_to_ticket_linked_session(monkeypatch) -> None:
         saved.update(kwargs)
         return {"id": 88, **kwargs}
 
-    monkeypatch.setattr(app, "_current_login_user", _staff_user)
-    monkeypatch.setattr(app, "_get_staff_ticket", lambda *_: _ticket(101))
+    monkeypatch.setattr(helpers, "_current_login_user", _staff_user)
+    monkeypatch.setattr(helpers, "_get_staff_ticket", lambda *_: _ticket(101))
     monkeypatch.setattr(
-        app,
+        helpers,
         "_find_ticket_chat_context",
         lambda *_: {"session": {"session_id": "S-linked-ticket-session"}},
     )
-    monkeypatch.setattr(app, "chat_messages", SimpleNamespace(save=save_message))
+    monkeypatch.setattr(deps, "chat_messages", SimpleNamespace(save=save_message))
     monkeypatch.setattr(
-        app,
+        deps,
         "chat_sessions",
         SimpleNamespace(update_status=lambda session_id, status: statuses.append((session_id, status))),
     )
@@ -106,10 +110,10 @@ def test_ticket_owner_sends_reply_to_ticket_linked_session(monkeypatch) -> None:
 
 def test_ticket_owner_can_generate_customer_reply_draft(monkeypatch) -> None:
     """当前处理人仍可正常生成草稿，避免归属校验误伤正常工作流。"""
-    monkeypatch.setattr(app, "_current_login_user", _staff_user)
-    monkeypatch.setattr(app, "_get_staff_ticket", lambda *_: _ticket(101))
+    monkeypatch.setattr(helpers, "_current_login_user", _staff_user)
+    monkeypatch.setattr(helpers, "_get_staff_ticket", lambda *_: _ticket(101))
     monkeypatch.setattr(
-        app,
+        helpers,
         "_find_ticket_chat_context",
         lambda *_: {"session": {"session_id": "S202607220001"}},
     )
@@ -117,7 +121,7 @@ def test_ticket_owner_can_generate_customer_reply_draft(monkeypatch) -> None:
     from types import SimpleNamespace
 
     monkeypatch.setattr(
-        app,
+        deps,
         "staff_reply_draft_service",
         SimpleNamespace(
             generate_with_metadata=lambda **_: SimpleNamespace(
@@ -146,13 +150,13 @@ def test_ticket_customer_mismatch_cannot_write_to_linked_session(monkeypatch) ->
     from types import SimpleNamespace
 
     monkeypatch.setattr(
-        app,
+        deps,
         "chat_sessions",
         SimpleNamespace(get_by_session_no=lambda _: {"session_id": "S-other", "customer_id": 9}),
     )
 
     try:
-        app._find_ticket_chat_context(
+        helpers._find_ticket_chat_context(
             "T202607220099",
             {"ticketNo": "T202607220099", "customerId": 7, "externalSessionNo": "S-other"},
         )
@@ -167,18 +171,18 @@ def test_ticket_status_sync_writes_customer_visible_event_to_linked_human_sessio
     from types import SimpleNamespace
 
     saved: list[dict] = []
-    monkeypatch.setattr(app, "chat_sessions", SimpleNamespace(
+    monkeypatch.setattr(deps, "chat_sessions", SimpleNamespace(
         get_by_session_no=lambda _: {"session_id": "S-linked", "customer_id": 7},
         update_status=lambda *_: None,
     ))
-    monkeypatch.setattr(app, "chat_messages", SimpleNamespace(
+    monkeypatch.setattr(deps, "chat_messages", SimpleNamespace(
         list_by_session=lambda _: [],
         save=lambda *args, **kwargs: saved.append({"args": args, "kwargs": kwargs}),
     ))
 
-    result = app.sync_ticket_status_to_conversation(
+    result = internal_router.sync_ticket_status_to_conversation(
         {"ticketNo": "T202607220099", "customerId": 7, "externalSessionNo": "S-linked", "status": "PROCESSING"},
-        app.AGENT_INTERNAL_SECRET,
+        config.AGENT_INTERNAL_SECRET,
     )
 
     assert result == {"status": "success", "session_id": "S-linked"}

@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 
 import app
+from app import deps
+from app.api import helpers
 from services.staff_reply_draft_service import StaffReplyDraftResult, StaffReplyDraftService
 
 
@@ -84,13 +86,13 @@ def test_model_network_failure_returns_safe_fallback_reason(monkeypatch) -> None
 
 def test_staff_draft_api_returns_llm_generation_mode(monkeypatch) -> None:
     """草稿接口应把模型生成结果返回给坐席，但不会自动写入客户会话。"""
-    monkeypatch.setattr(app, "_current_login_user", lambda _: {"user_id": 101, "role": "staff", "display_name": "客服小王"})
+    monkeypatch.setattr(helpers, "_current_login_user", lambda _: {"user_id": 101, "role": "staff", "display_name": "客服小王"})
     ticket = _ticket() | {"handlerId": 101}
-    monkeypatch.setattr(app, "_get_staff_ticket", lambda *_: ticket)
-    monkeypatch.setattr(app, "_find_ticket_chat_context", lambda *_: {"session": {"session_id": "S202607220888"}})
-    monkeypatch.setattr(app.chat_messages, "list_by_session", lambda _: [{"sender_type": "customer", "content": "商品有问题"}])
+    monkeypatch.setattr(helpers, "_get_staff_ticket", lambda *_: ticket)
+    monkeypatch.setattr(helpers, "_find_ticket_chat_context", lambda *_: {"session": {"session_id": "S202607220888"}})
+    monkeypatch.setattr(deps.chat_messages, "list_by_session", lambda _: [{"sender_type": "customer", "content": "商品有问题"}])
     monkeypatch.setattr(
-        app,
+        deps,
         "staff_reply_draft_service",
         SimpleNamespace(
             generate_with_metadata=lambda **_: StaffReplyDraftResult(
