@@ -82,6 +82,43 @@ def get_staff_ticket_context(
     }
 
 
+@router.get("/api/staff/tickets/{ticket_no}/messages")
+def get_staff_ticket_messages(
+    ticket_no: str,
+    after_message_id: int = 0,
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """返回工单关联会话的对话正文，供坐席在工作台内直接与客户沟通。
+
+    改造前坐席只有 AI 决策依据（/context），没有对话正文，导致工单页无法和客户交流。
+    权限与 /context 完全一致：待分派工单可读，已领取工单仅限处理人本人。
+    内部扩展字段经 _staff_safe_handoff_messages 过滤，只保留客户可见正文与路由标记。
+    """
+    staff_user = helpers._require_staff_user(authorization)
+    ticket = helpers._get_staff_ticket(ticket_no, authorization)
+    handler = ticket.get("handlerId")
+    if handler is not None and str(handler) != str(staff_user.get("user_id")):
+        raise HTTPException(status_code=403, detail="工单已被其他坐席领取，无权查看客户对话")
+    try:
+        context = helpers._find_ticket_chat_context(ticket_no, ticket)
+    except HTTPException:
+        context = None
+    if not context:
+        # 工单尚未绑定会话时返回空对话，前端据此提示“该工单暂无客户对话”。
+        return {"ticket_no": ticket_no, "session_id": None, "messages": []}
+    session_id = context["session"]["session_id"]
+    messages = [
+        message
+        for message in deps.chat_messages.list_by_session(session_id)
+        if int(message.get("id") or 0) > after_message_id
+    ]
+    return {
+        "ticket_no": ticket_no,
+        "session_id": session_id,
+        "messages": helpers._staff_safe_handoff_messages(messages),
+    }
+
+
 @router.post("/api/staff/tickets/{ticket_no}/reply/draft")
 def draft_staff_ticket_reply(
     ticket_no: str,

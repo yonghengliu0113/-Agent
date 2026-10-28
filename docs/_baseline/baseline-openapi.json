@@ -3148,6 +3148,74 @@
         "summary": "Get Staff Ticket Context"
       }
     },
+    "/api/staff/tickets/{ticket_no}/messages": {
+      "get": {
+        "description": "返回工单关联会话的对话正文，供坐席在工作台内直接与客户沟通。\n\n改造前坐席只有 AI 决策依据（/context），没有对话正文，导致工单页无法和客户交流。\n权限与 /context 完全一致：待分派工单可读，已领取工单仅限处理人本人。\n内部扩展字段经 _staff_safe_handoff_messages 过滤，只保留客户可见正文与路由标记。",
+        "operationId": "get_staff_ticket_messages_api_staff_tickets__ticket_no__messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_no",
+            "required": true,
+            "schema": {
+              "title": "Ticket No",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_message_id",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "After Message Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Staff Ticket Messages Api Staff Tickets  Ticket No  Messages Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Staff Ticket Messages"
+      }
+    },
     "/api/staff/tickets/{ticket_no}/reply/draft": {
       "post": {
         "description": "根据坐席填写的处理结果生成客户安全话术草稿，但不自动发送给客户。",

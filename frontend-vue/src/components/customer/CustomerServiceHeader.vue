@@ -21,15 +21,10 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <header class="customer-hero customer-page-header">
-    <div>
-      <h1>客户自助服务</h1>
-      <p>
-        7×24 小时智能客服 · 订单、物流、售后随时问
-        <span v-if="agentStatus?.llm?.enabled"> · LLM {{ agentStatus.llm.provider }}</span>
-      </p>
-    </div>
-    <div class="hero-actions customer-page-header-actions">
+  <header class="cx-pagehead">
+    <h1 class="cx-pagehead__title">智能客服</h1>
+    <span v-if="agentStatus?.llm?.enabled" class="ws-tag ws-tag--ok">AI 已就绪</span>
+    <div class="cx-pagehead__actions">
       <el-button :icon="Refresh" :loading="loadingWorkspace" @click="emit('refresh')">刷新</el-button>
       <el-button :icon="Plus" :loading="creatingSession" type="primary" @click="emit('create')">新建咨询</el-button>
       <el-button :icon="Clock" @click="emit('open-history')">历史咨询</el-button>

@@ -195,7 +195,8 @@ SSE 流式回复，**生产默认入口**。请求体同 `/api/agent/reply`，�
 | `GET` | `/api/staff/handoff/sessions/{session_id}/attachment/{message_id}` | 下载会话附件 |
 | `POST` | `/api/staff/presence/heartbeat` | 坐席在线心跳；离线坐席的会话由后台任务回收 |
 | `DELETE` | `/api/staff/presence` | 坐席下线 |
-| `GET` | `/api/staff/tickets/{ticket_no}/context` | 工单上下文聚合：工单详情 + 关联会话 + 消息 + AI 建议 + 风险原因 + 工具结果 |
+| `GET` | `/api/staff/tickets/{ticket_no}/context` | 工单上下文聚合：工单详情 + 关联会话 + AI 依据（风险原因、知识引用、工具结果、内部建议） |
+| `GET` | `/api/staff/tickets/{ticket_no}/messages?after_message_id=X` | **工单关联会话的对话正文**，供坐席在工作台内直接与客户沟通；内部扩展字段经安全过滤，仅返回客户可见正文与路由标记。待分派工单可读，已领取工单仅限处理人 |
 | `POST` | `/api/staff/tickets/{ticket_no}/reply/draft` | 生成客户安全话术草稿（**规则模板，不调 LLM**） |
 | `POST` | `/api/staff/tickets/{ticket_no}/reply/send` | 坐席确认发送；写入 `sender_type=staff` 消息，会话状态 `STAFF_REPLIED` |
 

@@ -1,5 +1,6 @@
 import { agentHttp, businessHttp } from './http'
 import type {
+  ChatMessage,
   StaffHandoffDetail,
   StaffHandoffHistoryPage,
   StaffHandoffSession,
@@ -71,6 +72,13 @@ export const staffTicketApi = {
 }
 
 export const staffReplyApi = {
+  /** 读取工单关联会话的对话正文，供坐席在工作台内直接与客户沟通。 */
+  messages(ticketNo: string, afterMessageId = 0) {
+    return agentHttp.get<{ ticket_no: string; session_id: string | null; messages: ChatMessage[] }>(
+      `/staff/tickets/${ticketNo}/messages`,
+      { params: { after_message_id: afterMessageId } }
+    )
+  },
   draft(ticketNo: string, closeReason: string) {
     return agentHttp.post<StaffReplyDraft>(`/staff/tickets/${ticketNo}/reply/draft`, {
       close_reason: closeReason

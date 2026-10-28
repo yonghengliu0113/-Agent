@@ -1,215 +1,246 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ArrowLeft, ArrowRight, ChatLineRound, Histogram, Setting, SwitchButton } from '@element-plus/icons-vue'
 
-import { staffHandoffApi } from '@/api/staff'
-import StaffHandoffWorkspace from '@/components/staff/StaffHandoffWorkspace.vue'
+import StaffConversationPane from '@/components/staff/StaffConversationPane.vue'
+import StaffHandoffContextPanel from '@/components/staff/StaffHandoffContextPanel.vue'
 import StaffQueueAside from '@/components/staff/StaffQueueAside.vue'
-import StaffTicketWorkspace from '@/components/staff/StaffTicketWorkspace.vue'
-import { useStaffChangeRequests } from '@/composables/useStaffChangeRequests'
-import { useStaffHandoff } from '@/composables/useStaffHandoff'
-import { useStaffPolling } from '@/composables/useStaffPolling'
-import { useStaffTicketActions } from '@/composables/useStaffTicketActions'
-import { useStaffTicketQueue } from '@/composables/useStaffTicketQueue'
-import { useAuthStore } from '@/stores/auth'
-import type { Ticket } from '@/types/api'
+import StaffTicketContextPanel from '@/components/staff/StaffTicketContextPanel.vue'
+import { useStaffWorkspace } from '@/composables/useStaffWorkspace'
 
 /**
- * 坐席工作台容器。
- * 负责组合左侧队列、工单工作区与人工接管工作区，并串联队列/工单/会话三类数据源。
- * 列表、写操作、轮询与本地已读游标分别下沉到 composable，展示区块下沉到
- * src/components/staff，本文件只保留页面级状态与生命周期。
+ * 坐席工作台外壳。
+ *
+ * 布局：顶栏 + 左侧队列 + 中间对话 + 右侧上下文。
+ * 页面级状态与数据编排见 useStaffWorkspace，本文件只负责模板与事件绑定。
  */
-const router = useRouter()
-const auth = useAuthStore()
-const workMode = ref<'tickets' | 'handoff'>('tickets')
-const acting = ref(false)
-
-const queue = useStaffTicketQueue()
-const changeRequests = useStaffChangeRequests({
-  selectedTicketNo: queue.selectedTicketNo,
-  selectedTicket: queue.selectedTicket,
-  canOperate: queue.canOperate,
-  loadTickets: queue.loadTickets
-})
-const ticketActions = useStaffTicketActions({
-  selectedTicket: queue.selectedTicket,
-  selectedTicketNo: queue.selectedTicketNo,
-  queueScope: queue.queueScope,
+const {
+  auth,
+  router,
+  workMode,
   acting,
-  loadTickets: queue.loadTickets,
-  loadChangeRequests: changeRequests.loadChangeRequests
-})
-const handoff = useStaffHandoff({ acting })
-const polling = useStaffPolling({
-  loadHandoffSessions: handoff.loadHandoffSessions,
-  pollHandoffDetail: handoff.pollHandoffDetail
-})
+  sending,
+  queueCollapsed,
+  contextCollapsed,
+  contextTab,
+  isTicketMode,
+  switchMode,
+  queue,
+  selectTicket,
+  refreshQueue,
+  conversationMessages,
+  conversationTitle,
+  conversationSubtitle,
+  conversationTags,
+  canReply,
+  replyHint,
+  composerDraft,
+  ticketMessages,
+  handoff,
+  sendMessage,
+  ticketActions,
+  changeRequests,
+  handleChangeRequestMessage,
+  logout
+} = useStaffWorkspace()
 
-const { selectedTicketNo, queueScope, selectedStatuses, statusOptions, loading, selectedTicket, visibleTickets, canClaim, canOperate, loadTickets } = queue
-const {
-  ticketChangeRequests,
-  loadingChangeRequests,
-  decidingChangeRequestNo,
-  changeRequestMessages,
-  loadChangeRequests,
-  decideChangeRequest
-} = changeRequests
-const {
-  closeReason,
-  draftMessage,
-  draftGenerationMode,
-  draftFallbackReason,
-  generatingDraft,
-  ticketAiContext,
-  loadingTicketAiContext,
-  resetDraft,
-  loadTicketAiContext,
-  claimTicket,
-  startTicket,
-  closeTicket,
-  generateDraft,
-  sendReply
-} = ticketActions
+// 模板直接使用的字段解构出来，保持模板可读性（均为 composable 暴露的 ref）
+const { visibleTickets, selectedTicketNo, queueScope, selectedStatuses, statusOptions, loading, selectedTicket, canClaim, canOperate } = queue
 const {
   handoffSessions,
-  handoffMessages,
+  handoffLoading,
+  visibleHandoffs,
+  selectedHandoffSessionId,
+  seenHandoffMessageIds,
+  selectedHandoff,
   handoffSummary,
+  canOperateHandoff,
+  handoffCloseMessage,
   handoffHistoryAvailable,
   handoffHistoryAccessAllowed,
   handoffHistoryLoading,
-  selectedHandoffSessionId,
-  handoffLoading,
-  handoffReply,
-  handoffCloseMessage,
-  handoffScope,
-  seenHandoffMessageIds,
-  selectedHandoff,
-  visibleHandoffs,
-  canOperateHandoff,
-  loadHandoffSessions,
-  loadEarlierHandoffHistory,
   selectHandoff,
   acceptHandoff,
-  sendHandoffReply,
+  createHandoffTicket,
   closeHandoff,
-  createHandoffTicket
+  loadEarlierHandoffHistory
 } = handoff
-const { startStaffPolling, stopStaffPolling, handleStaffVisibility } = polling
-
-/** 选择工单：清空上一张工单草稿，并并行加载改约申请与 AI 决策依据。 */
-function selectTicket(ticket: Ticket) {
-  selectedTicketNo.value = ticket.ticketNo
-  resetDraft()
-  void loadChangeRequests(ticket.ticketNo)
-  void loadTicketAiContext(ticket.ticketNo)
-}
-
-/** 改约申请的客户可见说明按申请号保存，提交时随审核动作一起发送。 */
-function handleChangeRequestMessage(payload: { requestNo: string; value: string }) {
-  changeRequestMessages.value = { ...changeRequestMessages.value, [payload.requestNo]: payload.value }
-}
-
-/** 退出登录：先停止轮询并通知在线状态下线，再清理本地登录态。 */
-async function logout() {
-  stopStaffPolling()
-  await staffHandoffApi.leave().catch(() => undefined)
-  auth.logout()
-  await router.push('/staff/login')
-}
-
-onMounted(async () => {
-  await staffHandoffApi.heartbeat().catch(() => undefined)
-  await Promise.all([loadTickets(), loadHandoffSessions()])
-  document.addEventListener('visibilitychange', handleStaffVisibility)
-  startStaffPolling()
-})
-
-onBeforeUnmount(() => {
-  stopStaffPolling()
-  document.removeEventListener('visibilitychange', handleStaffVisibility)
-  void staffHandoffApi.leave().catch(() => undefined)
-})
+const { generatingDraft, draftGenerationMode, draftFallbackReason, claimTicket, startTicket, closeTicket, generateDraft, ticketAiContext, loadingTicketAiContext } = ticketActions
+const { ticketChangeRequests, loadingChangeRequests, decidingChangeRequestNo, changeRequestMessages, decideChangeRequest } = changeRequests
 </script>
 
+
 <template>
-  <el-container class="app-shell">
-    <StaffQueueAside
-      v-model:work-mode="workMode"
-      v-model:queue-scope="queueScope"
-      v-model:selected-statuses="selectedStatuses"
-      v-model:handoff-scope="handoffScope"
-      :handoff-count="handoffSessions.length"
-      :display-name="auth.user?.display_name"
-      :status-options="statusOptions"
-      :loading="loading"
-      :visible-tickets="visibleTickets"
-      :selected-ticket-no="selectedTicketNo"
-      :handoff-loading="handoffLoading"
-      :visible-handoffs="visibleHandoffs"
-      :selected-handoff-session-id="selectedHandoffSessionId"
-      :seen-handoff-message-ids="seenHandoffMessageIds"
-      @select-ticket="selectTicket"
-      @select-handoff="selectHandoff"
-      @refresh-tickets="loadTickets"
-      @refresh-handoffs="loadHandoffSessions(false)"
-      @logout="logout"
-      @open-rag="router.push('/staff/rag-evaluation')"
-      @open-monitor="router.push('/staff/system-monitor')"
-    />
+  <div class="ws-app">
+    <header class="ws-topbar">
+      <div class="ws-topbar__brand">
+        <span class="ws-topbar__mark">
+          <el-icon><ChatLineRound /></el-icon>
+        </span>
+        客服工作台
+      </div>
 
-    <el-main class="main-panel">
-      <header class="page-header">
-        <div>
-          <h1>客服坐席工作台</h1>
-          <p>处理自己名下工单，填写处理结果，并确认客户可见回复</p>
-        </div>
-      </header>
+      <div class="ws-segment">
+        <button
+          :class="['ws-segment__btn', workMode === 'tickets' ? 'is-active' : '']"
+          @click="switchMode('tickets')"
+        >
+          工单
+          <span class="ws-segment__count">{{ visibleTickets.length }}</span>
+        </button>
+        <button
+          :class="['ws-segment__btn', workMode === 'handoff' ? 'is-active' : '']"
+          @click="switchMode('handoff')"
+        >
+          人工会话
+          <span class="ws-segment__count">{{ handoffSessions.length }}</span>
+        </button>
+      </div>
 
-      <StaffHandoffWorkspace
-        v-if="workMode === 'handoff'"
-        v-model:reply="handoffReply"
-        v-model:close-message="handoffCloseMessage"
-        :session="selectedHandoff"
-        :summary="handoffSummary"
-        :messages="handoffMessages"
-        :can-operate-handoff="canOperateHandoff"
-        :history-available="handoffHistoryAvailable"
-        :history-access-allowed="handoffHistoryAccessAllowed"
-        :history-loading="handoffHistoryLoading"
-        :acting="acting"
-        @accept="acceptHandoff"
-        @send-reply="sendHandoffReply"
-        @create-ticket="createHandoffTicket"
-        @close="closeHandoff"
-        @load-history="loadEarlierHandoffHistory"
+      <button
+        class="ws-iconbtn"
+        :class="queueCollapsed ? '' : 'is-active'"
+        title="展开或收起队列"
+        aria-label="展开或收起队列"
+        @click="queueCollapsed = !queueCollapsed"
+      >
+        <el-icon><ArrowLeft /></el-icon>
+      </button>
+      <button
+        class="ws-iconbtn"
+        :class="contextCollapsed ? '' : 'is-active'"
+        title="展开或收起详情栏"
+        aria-label="展开或收起详情栏"
+        @click="contextCollapsed = !contextCollapsed"
+      >
+        <el-icon><ArrowRight /></el-icon>
+      </button>
+
+      <span class="ws-topbar__spacer" />
+
+      <span class="ws-presence">
+        <span class="ws-presence__dot" />
+        在线
+      </span>
+
+      <button class="ws-iconbtn" title="RAG 评测" aria-label="RAG 评测" @click="router.push('/staff/rag-evaluation')">
+        <el-icon><Histogram /></el-icon>
+      </button>
+      <button class="ws-iconbtn" title="系统监控" aria-label="系统监控" @click="router.push('/staff/system-monitor')">
+        <el-icon><Setting /></el-icon>
+      </button>
+
+      <el-dropdown trigger="click">
+        <button class="ws-btn ws-btn--ghost ws-btn--sm">
+          {{ auth.user?.display_name || '坐席' }}
+        </button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item disabled>{{ auth.user?.display_name }} · 客服坐席</el-dropdown-item>
+            <el-dropdown-item divided @click="logout">
+              <el-icon><SwitchButton /></el-icon>
+              退出登录
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+    </header>
+
+    <div class="ws-body">
+      <StaffQueueAside
+        v-show="!queueCollapsed"
+        :mode="workMode"
+        :queue-scope="queueScope"
+        :selected-statuses="selectedStatuses"
+        :status-options="statusOptions"
+        :loading="loading"
+        :visible-tickets="visibleTickets"
+        :selected-ticket-no="selectedTicketNo"
+        :handoff-loading="handoffLoading"
+        :visible-handoffs="visibleHandoffs"
+        :selected-handoff-session-id="selectedHandoffSessionId"
+        :seen-handoff-message-ids="seenHandoffMessageIds"
+        @update:queue-scope="queueScope = $event"
+        @update:selected-statuses="selectedStatuses = $event"
+        @select-ticket="selectTicket"
+        @select-handoff="selectHandoff"
+        @refresh="refreshQueue"
       />
 
-      <StaffTicketWorkspace
-        v-else
-        v-model:close-reason="closeReason"
-        v-model:draft-message="draftMessage"
-        :selected-ticket="selectedTicket"
-        :ticket-change-requests="ticketChangeRequests"
+      <StaffConversationPane
+        :title="conversationTitle"
+        :subtitle="conversationSubtitle"
+        :tags="conversationTags"
+        :messages="conversationMessages"
+        :loading="isTicketMode ? ticketMessages.loading.value : handoffLoading"
+        :sending="sending"
+        :can-reply="canReply"
+        :reply-hint="replyHint"
+        :draft="composerDraft"
+        :empty-title="isTicketMode ? '该工单暂无客户对话' : '暂无对话内容'"
+        :empty-desc="
+          isTicketMode
+            ? '客户在本次会话中的消息会显示在这里，可直接在下方回复。'
+            : '接入会话后即可看到客户消息并回复。'
+        "
+        @update:draft="composerDraft = $event"
+        @send="sendMessage"
+      >
+        <template #actions>
+          <button
+            v-if="!isTicketMode && selectedHandoff?.handoff_status === 'PENDING'"
+            class="ws-btn ws-btn--primary"
+            :disabled="acting"
+            @click="acceptHandoff"
+          >
+            接入会话
+          </button>
+          <button v-if="isTicketMode && canClaim" class="ws-btn ws-btn--primary" :disabled="acting" @click="claimTicket">
+            领取工单
+          </button>
+        </template>
+      </StaffConversationPane>
+
+      <StaffTicketContextPanel
+        v-if="isTicketMode && !contextCollapsed"
+        :active-tab="contextTab"
+        :ticket="selectedTicket"
+        :ai-context="ticketAiContext"
+        :loading-ai-context="loadingTicketAiContext"
+        :change-requests="ticketChangeRequests"
         :loading-change-requests="loadingChangeRequests"
         :deciding-change-request-no="decidingChangeRequestNo"
         :change-request-messages="changeRequestMessages"
         :can-operate="canOperate"
         :can-claim="canClaim"
         :acting="acting"
+        :generating-draft="generatingDraft"
         :draft-generation-mode="draftGenerationMode"
         :draft-fallback-reason="draftFallbackReason"
-        :generating-draft="generatingDraft"
-        :ticket-ai-context="ticketAiContext"
-        :loading-ticket-ai-context="loadingTicketAiContext"
-        @update:change-request-message="handleChangeRequestMessage"
+        @tab-change="contextTab = $event"
+        @change-request-message="handleChangeRequestMessage"
         @claim="claimTicket"
         @start="startTicket"
         @close="closeTicket"
         @generate-draft="generateDraft"
-        @send-reply="sendReply"
-        @decide-change-request="decideChangeRequest"
+        @decide="decideChangeRequest"
       />
-    </el-main>
-  </el-container>
+
+      <StaffHandoffContextPanel
+        v-else-if="!isTicketMode && !contextCollapsed"
+        :session="selectedHandoff"
+        :summary="handoffSummary"
+        :can-operate-handoff="canOperateHandoff"
+        :acting="acting"
+        :close-message="handoffCloseMessage"
+        :history-available="handoffHistoryAvailable"
+        :history-access-allowed="handoffHistoryAccessAllowed"
+        :history-loading="handoffHistoryLoading"
+        @close-message-change="handoffCloseMessage = $event"
+        @accept="acceptHandoff"
+        @create-ticket="createHandoffTicket"
+        @close="closeHandoff"
+        @load-history="loadEarlierHandoffHistory"
+      />
+    </div>
+  </div>
 </template>

@@ -67,7 +67,7 @@ function handleDownloadAttachment(message: ChatMessage) {
     <div class="chat-header">
       <div>
         <h2>在线客服</h2>
-        <p><span class="online-dot"></span>智能助手 · 7x24小时为您服务</p>
+        <p><span class="online-dot"></span>智能助手在线</p>
       </div>
       <div class="chat-header-actions">
         <el-button :icon="Headset" plain @click="emit('quick', '转人工客服')">转人工客服</el-button>

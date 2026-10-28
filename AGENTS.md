@@ -30,6 +30,8 @@ enterprise-customer-agent/
 │   └── data/ datasets/ training/ prompts/   # 业务资产，勿动
 ├── business-service/            # Spring Boot 业务系统（唯一业务真相源）
 ├── frontend-vue/               # 唯一前端：/customer/**、/staff/**
+│   ├── src/styles/workspace.css # 设计令牌 + 坐席工作台(ws-*)与客户端外壳(cx-*)样式
+│   └── src/components/staff/    # 队列 / 对话主区 / 上下文面板
 ├── deploy/                      # K8s 资源草案
 ├── load-tests/                  # k6 压测脚本
 ├── docs/                        # ARCHITECTURE / API / RUNBOOK / ADR / _baseline / observability
@@ -64,7 +66,7 @@ enterprise-customer-agent/
 
 ### 路由基线
 
-**54 个路由**，其中 `/metrics` 与 `/api/agent/reply/stream/legacy` 为 `include_in_schema=False`，OpenAPI 只有 **52 operations**。基线文件 `docs/_baseline/baseline-openapi.json`。改接口必须同步 `docs/API.md` 与基线 spec。
+**55 个路由**，其中 `/metrics` 与 `/api/agent/reply/stream/legacy` 为 `include_in_schema=False`，OpenAPI 有 **53 operations / 52 paths**。基线文件 `docs/_baseline/baseline-openapi.json`。改接口必须同步 `docs/API.md` 与基线 spec。
 
 ## 3. 启动
 
@@ -125,7 +127,7 @@ print('paths',len(s['paths']),'operations',len(ops))
 "
 ```
 
-期望输出 `paths 51 operations 52`。不一致就说明契约变了，必须更新 `docs/API.md` 与基线文件。
+期望输出 `paths 52 operations 53`。不一致就说明契约变了，必须更新 `docs/API.md` 与基线文件。
 
 ## 5. 测试规范
 
