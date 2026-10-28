@@ -822,6 +822,46 @@ class ConversationContextTest(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertIn("order_no", result["analysis"].missing_slots)
 
+    def test_graph_queries_explicit_order_no_when_model_misses_it(self):
+        """模型漏抽订单号时，图节点仍要按客户原话里的订单号查单。"""
+        calls: list[str] = []
+        # 模拟模型只判定了物流诉求，却没有抽出消息里的订单号。
+        analysis = _status_analysis(order_no=[])
+
+        graph = build_ticket_process_graph(
+            analyzer_chain=RunnableLambda(lambda _: analysis),
+            retrieve_knowledge=lambda state: [],
+            query_order=lambda order_no, auth_token: calls.append(order_no) or {
+                "status": "success",
+                "query_type": "order_detail",
+                "order_no": order_no,
+                "data": {"orderNo": order_no},
+            },
+            query_customer_orders=lambda customer_id, auth_token: {"status": "empty", "query_type": "customer_orders", "data": []},
+            query_order_logistics=lambda order_no, auth_token: {"status": "empty", "query_type": "order_logistics", "order_no": order_no},
+            create_ticket=lambda payload, auth_token: {"status": "skipped"},
+            auto_assign_ticket=lambda ticket_no: {"status": "skipped"},
+            list_customer_tickets=lambda auth_token: {"status": "empty", "data": []},
+            query_ticket_status=lambda ticket_no, auth_token: {"status": "empty"},
+            urge_ticket=lambda ticket_no, reason, auth_token: {"status": "empty"},
+            prepare_action=lambda state: {"analysis": state["analysis"]},
+            compose_answer=lambda state: "ok",
+            log_tool_call=lambda tool_name, input_data, output_data: None,
+        )
+
+        graph.invoke(
+            {
+                "message": "帮我查一下订单 EC202607160010 的物流",
+                "customer_id": 7,
+                "selected_order_no": None,
+                "conversation_context": {},
+                "tool_results": [],
+                "citations": [],
+            }
+        )
+
+        self.assertEqual(calls, ["EC202607160010"])
+
     def test_stale_but_not_expired_order_context_prompts_confirmation(self):
         """5-30 分钟订单上下文只用于确认追问，不直接查询或执行动作。"""
         agent = object.__new__(CustomerServiceAgent)
@@ -866,6 +906,113 @@ class ConversationContextTest(unittest.TestCase):
 
         self.assertIn("选择订单", answer)
         self.assertIn("订单号", answer)
+
+    def test_explicit_order_no_survives_fuzzy_history_guardrail(self):
+        """消息自带订单号时，模糊指代替卫不能清掉订单号、关掉本轮查单。"""
+        agent = object.__new__(CustomerServiceAgent)
+        context = {
+            "login_user_context": {"display_name": "Demo Customer", "role": "customer", "verified": True, "source": "java_auth"},
+            "session_memory": {"recent_user_messages": [], "recent_ai_messages": []},
+        }
+
+        guarded = agent._apply_context_guardrails(
+            "帮我查一下订单 EC202607160010 的物流，顺便给这单开一下发票",
+            _status_analysis(order_no=["EC202607160010"]),
+            context,
+        )
+
+        self.assertEqual(guarded.order_no, ["EC202607160010"])
+        self.assertTrue(guarded.need_order_query)
+        self.assertEqual(guarded.user_goal, "status_query")
+
+    def test_fuzzy_reference_without_order_no_still_blocks_order_query(self):
+        """没有明确订单号的模糊指代仍需阻断查单，避免用历史或他人订单作答。"""
+        agent = object.__new__(CustomerServiceAgent)
+        context = {
+            "login_user_context": {"display_name": "Demo Customer", "role": "customer", "verified": True, "source": "java_auth"},
+            "session_memory": {"recent_user_messages": [], "recent_ai_messages": []},
+        }
+
+        guarded = agent._apply_context_guardrails("这个订单怎么样了", _status_analysis(), context)
+
+        self.assertEqual(guarded.order_no, [])
+        self.assertFalse(guarded.need_order_query)
+        self.assertEqual(guarded.user_goal, "info_query")
+
+    def test_explicit_order_no_overrides_fuzzy_order_guardrail(self):
+        """同一条消息里既有明确订单号又有“这单”时，必须按订单号回答，不能反问是哪笔订单。"""
+        agent = object.__new__(CustomerServiceAgent)
+        analysis = _status_analysis(order_no=["EC202607160010"])
+        tool_results = [
+            {
+                "status": "success",
+                "query_type": "order_detail",
+                "order_no": "EC202607160010",
+                "data": {
+                    "orderNo": "EC202607160010",
+                    "productName": "降噪耳机",
+                    "orderStatus": "SHIPPED",
+                    "amount": 1299,
+                    "afterSaleStatus": "NONE",
+                },
+            },
+            {
+                "status": "success",
+                "query_type": "order_logistics",
+                "order_no": "EC202607160010",
+                "data": {
+                    "orderNo": "EC202607160010",
+                    "carrierName": "顺丰速运",
+                    "trackingNo": "SF202607160010",
+                    "logisticsStatus": "IN_TRANSIT",
+                    "latestLocation": "上海转运中心",
+                    "estimatedDeliveryTime": "2026-09-30 09:42:00",
+                    "traces": [
+                        {
+                            "stationName": "上海转运中心",
+                            "description": "快件已到达上海转运中心",
+                            "status": "IN_TRANSIT",
+                        }
+                    ],
+                },
+            },
+        ]
+
+        answer = agent._compose_answer(
+            {
+                "message": "帮我查一下订单 EC202607160010 的物流，顺便给这单开一下发票",
+                "analysis": analysis,
+                "citations": [],
+                "tool_results": tool_results,
+                "conversation_context": {},
+            }
+        )
+
+        self.assertIn("EC202607160010", answer)
+        self.assertIn("上海转运中心", answer)
+        self.assertNotIn("我还不能确定您指的是哪一笔订单", answer)
+
+    def test_successful_order_query_skips_order_guardrail(self):
+        """已经查到具体订单时，即使用户用“这单”指代，也不能再追问是哪笔订单。"""
+        agent = object.__new__(CustomerServiceAgent)
+        guardrail_answer = agent._compose_order_context_guardrail_answer(
+            {
+                "message": "这单到哪了",
+                "analysis": _status_analysis(),
+                "citations": [],
+                "tool_results": [
+                    {
+                        "status": "success",
+                        "query_type": "order_detail",
+                        "order_no": "EC202607160010",
+                        "data": {"orderNo": "EC202607160010"},
+                    }
+                ],
+                "conversation_context": {},
+            }
+        )
+
+        self.assertEqual(guardrail_answer, "")
 
     def test_context_builder_extracts_tool_facts_without_raw_history(self):
         """上下文从工具结果提取高可信事实，但安全摘要不包含历史原文和内部字段。"""

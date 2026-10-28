@@ -8,7 +8,7 @@ from langgraph.graph import END, StateGraph
 
 from agents.action_request import ACTION_SLOT_RULES
 from agents.intent_normalizer import is_delivery_not_received_message
-from agents.order_context import has_fuzzy_order_reference, resolve_order_context
+from agents.order_context import extract_order_no, has_fuzzy_order_reference, resolve_order_context
 from rag.knowledge_taxonomy import infer_business_scope
 from schemas.intent_schema import Citation, IntentResult
 
@@ -106,6 +106,11 @@ def build_ticket_process_graph(
         tool_results: list[dict[str, Any]] = []
         should_query_logistics = _is_logistics_query(state["message"], analysis.intent)
         order_nos = list(analysis.order_no)
+        explicit_order_no = extract_order_no(state["message"])
+        if explicit_order_no and explicit_order_no not in order_nos:
+            # 模型可能漏抽订单号；客户原话里的订单号是确定性事实，必须按它查单，
+            # 否则会被当成“没有订单号”退回追问。归属仍由 Java 按 Token 校验。
+            order_nos.append(explicit_order_no)
         if should_use_selected_order and selected_order_no not in order_nos:
             # 客户侧选中的订单只作为候选上下文，真实归属仍由 Java 订单接口按 Token 校验。
             order_nos.append(selected_order_no)

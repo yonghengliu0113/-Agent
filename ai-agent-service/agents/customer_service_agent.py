@@ -29,7 +29,7 @@ from agents.intent_normalizer import (
 )
 from agents.llm_intent_analyzer import LLMIntentAnalyzer
 from agents.message_classifier import MessageClassifierMixin
-from agents.order_context import has_fuzzy_order_reference, resolve_order_context
+from agents.order_context import extract_order_no, has_fuzzy_order_reference, resolve_order_context
 from graphs.ticket_process_graph import TicketProcessState, build_ticket_process_graph
 from rag.quality import build_rag_trace, ensure_citation_ids
 from rag.rag_chain import RagChain
@@ -1042,8 +1042,16 @@ class CustomerServiceAgent(MessageClassifierMixin, AnswerFormattingMixin):
         message = state["message"]
         if not has_fuzzy_order_reference(message):
             return ""
+        if extract_order_no(message):
+            # 本轮消息已给出明确订单号（如“订单 EC... 的物流，顺便给这单开发票”），
+            # “这单/该订单”等指代可直接解析为本轮订单号，不能再让历史上下文追问覆盖显式指定，
+            # 否则会把已经查到的订单和物流事实丢掉，退回到“请提供订单号”。
+            return ""
         if str(state.get("selected_order_no") or "").strip():
             # 本轮前端明确选择优先于历史模糊指代；订单归属仍由本轮 Java Tool 查询结果校验。
+            return ""
+        if any(item.get("query_type") == "order_detail" and item.get("status") == "success" for item in state.get("tool_results", [])):
+            # 本轮已按订单号查询成功，事实已落到工具结果里，再反问“是哪笔订单”只会让客户重复输入。
             return ""
         resolution = resolve_order_context(state.get("conversation_context"), message)
         if resolution.get("status") == "needs_confirmation" and resolution.get("order_no"):
@@ -2075,8 +2083,10 @@ class CustomerServiceAgent(MessageClassifierMixin, AnswerFormattingMixin):
                 normalized.order_no.append(order_no)
                 normalized.order_related = True
                 normalized.need_order_query = normalized.user_goal not in {"policy_consult", "how_to"}
-        elif has_fuzzy_order_reference(message):
+        elif has_fuzzy_order_reference(message) and not extract_order_no(message):
             # 过期或待确认订单上下文不得触发查单、建单或售后动作。
+            # 但本条消息自带明确订单号时（如“订单 EC... 的物流，顺便给这单开发票”），
+            # “这单”指向的就是这个订单号，不能把已识别的订单号清掉、把查单也一并关掉。
             normalized.intent = "consult" if normalized.intent == "other" else normalized.intent
             normalized.user_goal = "info_query"
             normalized.order_related = False
