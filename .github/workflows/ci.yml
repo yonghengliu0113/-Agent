@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main, refactor/enterprise-standard]
+  pull_request:
+
+# 三条独立 job：任何一条红就阻断合并，不使用 continue-on-error 或 || true
+jobs:
+  python-lint-and-types:
+    name: Python lint / types
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-agent-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: 安装 lint 工具
+        run: pip install ruff mypy
+      - name: ruff（语法/未定义名/未使用导入/导入排序）
+        run: ruff check .
+      - name: mypy（装配层类型门禁）
+        run: mypy
+
+  python-test:
+    name: Python test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-agent-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: 安装依赖
+        run: pip install -r requirements.txt pytest pytest-asyncio
+      - name: pytest
+        run: python -m pytest tests
+
+  frontend:
+    name: Frontend typecheck / build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-vue
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend-vue/package-lock.json
+      - name: 安装依赖
+        run: npm ci
+      - name: 类型检查
+        run: npm run typecheck
+      - name: 构建
+        run: npm run build
+
+  java:
+    name: Java compile / test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: business-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: 编译并测试
+        run: mvn -B test
+
+  contract-freeze:
+    name: 接口契约冻结校验
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-agent-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+      - name: 生成当前 OpenAPI 并与基线比对
+        run: |
+          python - <<'EOF'
+          import json, sys
+          from app.main import app
+
+          baseline = json.load(open("../docs/_baseline/baseline-openapi.json", encoding="utf-8"))
+          current = app.openapi()
+
+          removed = sorted(set(baseline["paths"]) - set(current["paths"]))
+          if removed:
+              print("契约被破坏，以下 path 被删除：", removed)
+              sys.exit(1)
+
+          lost = []
+          for path, ops in baseline["paths"].items():
+              for method, spec in ops.items():
+                  after = current["paths"].get(path, {}).get(method)
+                  if after is None:
+                      lost.append(f"{method.upper()} {path}")
+                      continue
+                  missing = set(spec.get("responses", {})) - set(after.get("responses", {}))
+                  if missing:
+                      lost.append(f"{method.upper()} {path} 缺少响应码 {sorted(missing)}")
+          if lost:
+              print("契约被破坏：", lost)
+              sys.exit(1)
+
+          print(f"契约一致：paths={len(current['paths'])}")
+          EOF
+
+      - name: 54 个路由装饰器必须齐全
+        run: |
+          count=$(grep -rhE '@router\.(get|post|put|delete|patch)' app/api/routers/ | wc -l)
+          echo "路由装饰器数量: $count"
+          test "$count" -eq 54
