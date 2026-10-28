@@ -1,0 +1,20 @@
+== 基线指标 (commit a054123 / tag baseline-pre-refactor) ==
+自有 py 文件: 108
+java 文件: 53
+vue+ts 文件: 35
+app.py 路由装饰器: 54
+OpenAPI operations: 52
+项目内 md: 43
+pytest 用例: 273 passed
+
+== >800 行自有代码 ==
+3134 ai-agent-service/agents/customer_service_agent.py
+    1939 ai-agent-service/tests/test_return_goods_policy_guardrail.py
+    1749 ai-agent-service/tests/test_conversation_context.py
+    1657 ai-agent-service/app.py
+    1496 ai-agent-service/agents/action_request.py
+    1346 business-service/src/main/java/com/example/business/service/TicketService.java
+     917 ai-agent-service/graphs/ticket_process_graph.py
+     871 frontend-vue/src/views/staff/StaffHome.vue
+     821 frontend-vue/src/views/customer/CustomerHome.vue
+     803 ai-agent-service/repositories/chat_repository.py
