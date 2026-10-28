@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 本地虚拟环境和 IDE 配置
+ai-agent-service/.venv/
+ai-agent-service/.idea/
+
+# 本地密钥配置，禁止提交真实 API Key
+.env
+*.env
+!*.env.example
+ai-agent-service/.env
+
+# 微调训练产物和隔离训练环境，Adapter 与日志通过受控制品存储分发
+ai-agent-service/artifacts/intent_sft/
+ai-agent-service/training/.venv/
+
+# Java 构建产物
+business-service/target/
+
+# Vue 前端依赖和构建产物
+frontend-vue/node_modules/
+frontend-vue/dist/
+frontend-vue/.npm-cache/
+frontend-vue/.vite/
+
+# 本地 SQLite 数据文件
+ai-agent-service/data/
+business-service/data/*
+!business-service/data/.gitkeep
+
+# 本地受管服务的 PID 与日志
+/.runtime/
+
+# 架构治理补充（2025 标准化）
+.tools
+.logs/
+.deepeval/
+*.rdb
+.DS_Store
+*.log
+frontend-vue/.npm-cache/
+ai-agent-service/.pytest_cache/
+.pytest_cache/

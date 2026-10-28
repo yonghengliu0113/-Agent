@@ -1,0 +1,118 @@
+import { agentHttp, businessHttp } from './http'
+import type {
+  StaffHandoffDetail,
+  StaffHandoffHistoryPage,
+  StaffHandoffSession,
+  StaffReplyDraft,
+  RagEvaluationReport,
+  RagEvaluationJob,
+  OnlineEvaluationReport,
+  SystemMonitorSnapshot,
+  StaffTicketContext,
+  Ticket,
+  TicketChangeRequest
+} from '@/types/api'
+
+export const ragEvaluationApi = {
+  report() {
+    return agentHttp.get<RagEvaluationReport>('/staff/rag/evaluation')
+  },
+  createJob(maxSamples: number | null) {
+    return agentHttp.post<RagEvaluationJob>('/staff/rag/evaluation/jobs', { max_samples: maxSamples })
+  },
+  getJob(jobId: string) {
+    return agentHttp.get<RagEvaluationJob>(`/staff/rag/evaluation/jobs/${jobId}`)
+  },
+  onlineReport(days = 7) {
+    return agentHttp.get<OnlineEvaluationReport>('/staff/evaluation/online/report', { params: { days } })
+  }
+}
+
+export const systemMonitorApi = {
+  snapshot() {
+    return agentHttp.get<SystemMonitorSnapshot>('/staff/system/monitor')
+  }
+}
+
+export const staffTicketApi = {
+  list(status: string) {
+    return businessHttp.get<Ticket[]>('/staff/tickets', { params: { status } })
+  },
+  assign(ticketNo: string, assignedGroup: string) {
+    return businessHttp.post<Ticket>(`/staff/tickets/${ticketNo}/assign`, {
+      assignedGroup
+    })
+  },
+  start(ticketNo: string) {
+    return businessHttp.post<Ticket>(`/staff/tickets/${ticketNo}/status`, {
+      status: 'PROCESSING',
+      reason: '坐席开始处理'
+    })
+  },
+  close(ticketNo: string, closeReason: string) {
+    return businessHttp.post<Ticket>(`/staff/tickets/${ticketNo}/close`, {
+      closeReason
+    })
+  },
+  /** 仅工单处理人可读取和审核关联的履约变更申请。 */
+  changeRequests(ticketNo: string) {
+    return businessHttp.get<TicketChangeRequest[]>(`/staff/tickets/${ticketNo}/change-requests`)
+  },
+  decideChangeRequest(ticketNo: string, requestNo: string, decision: 'APPROVE' | 'REJECT' | 'NEED_MORE_INFO', customerMessage: string) {
+    return businessHttp.post<TicketChangeRequest>(`/staff/tickets/${ticketNo}/change-requests/${requestNo}/decision`, {
+      decision,
+      customerMessage
+    })
+  },
+  /** 读取工单关联会话中的 AI 决策依据（风险原因、知识引用、工具结果、内部建议）。 */
+  context(ticketNo: string) {
+    return agentHttp.get<StaffTicketContext>(`/staff/tickets/${ticketNo}/context`)
+  }
+}
+
+export const staffReplyApi = {
+  draft(ticketNo: string, closeReason: string) {
+    return agentHttp.post<StaffReplyDraft>(`/staff/tickets/${ticketNo}/reply/draft`, {
+      close_reason: closeReason
+    })
+  },
+  send(ticketNo: string, message: string) {
+    return agentHttp.post<{ status: string; session_id: string }>(`/staff/tickets/${ticketNo}/reply/send`, {
+      message
+    })
+  }
+}
+
+export const staffHandoffApi = {
+  list(limit = 50) {
+    return agentHttp.get<StaffHandoffSession[]>('/staff/handoff/sessions', { params: { limit } })
+  },
+  detail(sessionId: string, afterMessageId = 0) {
+    return agentHttp.get<StaffHandoffDetail>(`/staff/handoff/sessions/${sessionId}`, { params: { after_message_id: afterMessageId } })
+  },
+  history(sessionId: string, beforeMessageId: number, limit = 30) {
+    return agentHttp.get<StaffHandoffHistoryPage>(`/staff/handoff/sessions/${sessionId}/history`, {
+      params: { before_message_id: beforeMessageId, limit }
+    })
+  },
+  accept(sessionId: string) {
+    return agentHttp.post<{ status: string; session: StaffHandoffSession }>(`/staff/handoff/sessions/${sessionId}/accept`)
+  },
+  reply(sessionId: string, message: string) {
+    return agentHttp.post<{ status: string; session_id: string }>(`/staff/handoff/sessions/${sessionId}/reply`, { message })
+  },
+  close(sessionId: string, message: string) {
+    return agentHttp.post<{ status: string; session: StaffHandoffSession }>(`/staff/handoff/sessions/${sessionId}/close`, {
+      message
+    })
+  },
+  heartbeat() {
+    return agentHttp.post<{ online: boolean; ttl_seconds: number }>('/staff/presence/heartbeat')
+  },
+  leave() {
+    return agentHttp.delete<{ status: string }>('/staff/presence')
+  },
+  createTicket(sessionId: string) {
+    return agentHttp.post<{ status: string; ticket: Ticket }>(`/staff/handoff/sessions/${sessionId}/ticket`)
+  }
+}
